@@ -1,0 +1,546 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>LED Cube Controller</title>
+    <meta name="description" content="4x4x4 LED Cube WiFi Controller - Interactive 3D visualization and animation control">
+    <link rel="stylesheet" href="/styles.css">
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+</head>
+<body>
+    <!-- Loading Screen -->
+    <div id="loadingScreen" class="loading-screen">
+        <div class="loader-cube">
+            <div class="loader-face front"></div>
+            <div class="loader-face back"></div>
+            <div class="loader-face left"></div>
+            <div class="loader-face right"></div>
+            <div class="loader-face top"></div>
+            <div class="loader-face bottom"></div>
+        </div>
+        <p class="loading-text">Connecting to LED Cube...</p>
+    </div>
+
+    <!-- Main App -->
+    <div id="app" class="app hidden">
+        <!-- Header -->
+        <header class="header">
+            <div class="header-left">
+                <div class="logo-icon">
+                    <svg viewBox="0 0 24 24" width="28" height="28" fill="none" stroke="currentColor" stroke-width="2">
+                        <path d="M12 2L2 7l10 5 10-5-10-5z"/>
+                        <path d="M2 17l10 5 10-5"/>
+                        <path d="M2 12l10 5 10-5"/>
+                    </svg>
+                </div>
+                <h1 class="logo-text">LED <span class="accent">CUBE</span></h1>
+            </div>
+            <div class="header-right">
+                <div class="status-dot" id="connectionDot"></div>
+                <span class="status-text" id="connectionText">Connecting...</span>
+                <button class="icon-btn" id="systemBtn" title="System Info">
+                    <svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="2">
+                        <circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 00.33 1.82l.06.06a2 2 0 010 2.83 2 2 0 01-2.83 0l-.06-.06a1.65 1.65 0 00-1.82-.33 1.65 1.65 0 00-1 1.51V21a2 2 0 01-4 0v-.09A1.65 1.65 0 009 19.4a1.65 1.65 0 00-1.82.33l-.06.06a2 2 0 01-2.83-2.83l.06-.06A1.65 1.65 0 004.68 15a1.65 1.65 0 00-1.51-1H3a2 2 0 010-4h.09A1.65 1.65 0 004.6 9a1.65 1.65 0 00-.33-1.82l-.06-.06a2 2 0 012.83-2.83l.06.06A1.65 1.65 0 009 4.68a1.65 1.65 0 001-1.51V3a2 2 0 014 0v.09a1.65 1.65 0 001 1.51 1.65 1.65 0 001.82-.33l.06-.06a2 2 0 012.83 2.83l-.06.06A1.65 1.65 0 0019.4 9a1.65 1.65 0 001.51 1H21a2 2 0 010 4h-.09a1.65 1.65 0 00-1.51 1z"/>
+                    </svg>
+                </button>
+            </div>
+        </header>
+
+        <!-- Navigation Tabs -->
+        <nav class="nav-tabs">
+            <button class="tab active" data-tab="dashboard">
+                <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="3" width="7" height="7"/><rect x="14" y="3" width="7" height="7"/><rect x="3" y="14" width="7" height="7"/><rect x="14" y="14" width="7" height="7"/></svg>
+                <span>Dashboard</span>
+            </button>
+            <button class="tab" data-tab="visualizer">
+                <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 16V8a2 2 0 00-1-1.73l-7-4a2 2 0 00-2 0l-7 4A2 2 0 003 8v8a2 2 0 001 1.73l7 4a2 2 0 002 0l7-4A2 2 0 0021 16z"/></svg>
+                <span>3D View</span>
+            </button>
+            <button class="tab" data-tab="editor">
+                <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 20h9"/><path d="M16.5 3.5a2.121 2.121 0 013 3L7 19l-4 1 1-4L16.5 3.5z"/></svg>
+                <span>Editor</span>
+            </button>
+            <button class="tab" data-tab="system">
+                <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2"><rect x="2" y="3" width="20" height="14" rx="2" ry="2"/><line x1="8" y1="21" x2="16" y2="21"/><line x1="12" y1="17" x2="12" y2="21"/></svg>
+                <span>System</span>
+            </button>
+        </nav>
+
+        <!-- Dashboard Tab -->
+        <section id="tab-dashboard" class="tab-content active">
+            <!-- Playback Controls -->
+            <div class="card playback-card">
+                <div class="now-playing">
+                    <div class="anim-indicator"></div>
+                    <div class="now-playing-info">
+                        <span class="label">NOW PLAYING</span>
+                        <span class="current-anim" id="currentAnimName">Rain</span>
+                    </div>
+                </div>
+                <div class="playback-controls">
+                    <button class="ctrl-btn" id="prevBtn" title="Previous">
+                        <svg viewBox="0 0 24 24" width="20" height="20" fill="currentColor"><path d="M6 6h2v12H6zm3.5 6l8.5 6V6z"/></svg>
+                    </button>
+                    <button class="ctrl-btn play-btn" id="playPauseBtn" title="Play/Pause">
+                        <svg id="playIcon" viewBox="0 0 24 24" width="28" height="28" fill="currentColor"><path d="M8 5v14l11-7z"/></svg>
+                        <svg id="pauseIcon" viewBox="0 0 24 24" width="28" height="28" fill="currentColor" class="hidden"><path d="M6 19h4V5H6v14zm8-14v14h4V5h-4z"/></svg>
+                    </button>
+                    <button class="ctrl-btn" id="stopBtn" title="Stop">
+                        <svg viewBox="0 0 24 24" width="20" height="20" fill="currentColor"><rect x="6" y="6" width="12" height="12" rx="1"/></svg>
+                    </button>
+                    <button class="ctrl-btn" id="nextBtn" title="Next">
+                        <svg viewBox="0 0 24 24" width="20" height="20" fill="currentColor"><path d="M6 18l8.5-6L6 6v12zM16 6v12h2V6h-2z"/></svg>
+                    </button>
+                </div>
+                <div class="playback-toggles">
+                    <label class="toggle-label">
+                        <input type="checkbox" id="autoplayToggle">
+                        <span class="toggle-slider"></span>
+                        <span>Autoplay</span>
+                    </label>
+                    <label class="toggle-label">
+                        <input type="checkbox" id="randomToggle">
+                        <span class="toggle-slider"></span>
+                        <span>Shuffle</span>
+                    </label>
+                </div>
+            </div>
+
+            <!-- Sliders -->
+            <div class="card sliders-card">
+                <div class="slider-group">
+                    <label class="slider-label">
+                        <span>Speed</span>
+                        <span class="slider-value" id="speedValue">100ms</span>
+                    </label>
+                    <input type="range" class="neon-slider" id="speedSlider" min="20" max="500" value="100">
+                </div>
+                <div class="slider-group">
+                    <label class="slider-label">
+                        <span>Brightness</span>
+                        <span class="slider-value" id="brightnessValue">200</span>
+                    </label>
+                    <input type="range" class="neon-slider cyan" id="brightnessSlider" min="10" max="255" value="200">
+                </div>
+                <div class="slider-group">
+                    <label class="slider-label">
+                        <span>Density</span>
+                        <span class="slider-value" id="densityValue">4</span>
+                    </label>
+                    <input type="range" class="neon-slider magenta" id="densitySlider" min="1" max="16" value="4">
+                </div>
+                <div class="slider-group">
+                    <label class="slider-label">
+                        <span>Direction</span>
+                        <span class="slider-value" id="directionValue">Up</span>
+                    </label>
+                    <div class="direction-btns">
+                        <button class="dir-btn active" data-dir="0">↑</button>
+                        <button class="dir-btn" data-dir="1">↓</button>
+                        <button class="dir-btn" data-dir="2">←</button>
+                        <button class="dir-btn" data-dir="3">→</button>
+                        <button class="dir-btn" data-dir="4">◈</button>
+                        <button class="dir-btn" data-dir="5">◇</button>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Animation Grid -->
+            <div class="card">
+                <h2 class="card-title">Animations</h2>
+                <div class="anim-grid" id="animGrid">
+                    <!-- Populated by JavaScript -->
+                </div>
+            </div>
+        </section>
+
+        <!-- 3D Visualizer Tab -->
+        <section id="tab-visualizer" class="tab-content">
+            <div class="card visualizer-card">
+                <div id="cubeCanvas" class="cube-canvas"></div>
+                <p class="hint-text">Drag to rotate • Scroll to zoom</p>
+            </div>
+        </section>
+
+        <!-- Voxel Editor Tab -->
+        <section id="tab-editor" class="tab-content">
+            <div class="card">
+                <h2 class="card-title">Voxel Editor</h2>
+                <p class="card-subtitle">Click cells to toggle LEDs. Edit one layer at a time.</p>
+                
+                <div class="editor-controls">
+                    <button class="btn btn-outline" id="editorClear">Clear All</button>
+                    <button class="btn btn-outline" id="editorFill">Fill All</button>
+                    <button class="btn btn-primary" id="editorSend">Send to Cube</button>
+                </div>
+                
+                <div class="layer-tabs">
+                    <button class="layer-tab active" data-layer="3">Layer 4 (Top)</button>
+                    <button class="layer-tab" data-layer="2">Layer 3</button>
+                    <button class="layer-tab" data-layer="1">Layer 2</button>
+                    <button class="layer-tab" data-layer="0">Layer 1 (Bottom)</button>
+                </div>
+                
+                <div id="voxelGrid" class="voxel-grid">
+                    <!-- Populated by voxel_editor.js -->
+                </div>
+                
+                <div class="pattern-slots">
+                    <h3>Pattern Slots</h3>
+                    <div class="slot-grid">
+                        <button class="slot-btn" data-slot="0">1</button>
+                        <button class="slot-btn" data-slot="1">2</button>
+                        <button class="slot-btn" data-slot="2">3</button>
+                        <button class="slot-btn" data-slot="3">4</button>
+                        <button class="slot-btn" data-slot="4">5</button>
+                        <button class="slot-btn" data-slot="5">6</button>
+                        <button class="slot-btn" data-slot="6">7</button>
+                        <button class="slot-btn" data-slot="7">8</button>
+                        <button class="slot-btn" data-slot="8">9</button>
+                        <button class="slot-btn" data-slot="9">10</button>
+                    </div>
+                    <div class="slot-actions">
+                        <button class="btn btn-sm" id="savePatternBtn">Save</button>
+                        <button class="btn btn-sm btn-outline" id="loadPatternBtn">Load</button>
+                        <button class="btn btn-sm btn-outline" id="exportPatternBtn">Export JSON</button>
+                    </div>
+                </div>
+            </div>
+        </section>
+
+        <!-- System Tab -->
+        <section id="tab-system" class="tab-content">
+            <div class="card">
+                <h2 class="card-title">System Information</h2>
+                <div class="sys-grid">
+                    <div class="sys-item">
+                        <span class="sys-label">Firmware</span>
+                        <span class="sys-value" id="sysVersion">--</span>
+                    </div>
+                    <div class="sys-item">
+                        <span class="sys-label">IP Address</span>
+                        <span class="sys-value" id="sysIP">--</span>
+                    </div>
+                    <div class="sys-item">
+                        <span class="sys-label">WiFi Signal</span>
+                        <span class="sys-value" id="sysRSSI">--</span>
+                    </div>
+                    <div class="sys-item">
+                        <span class="sys-label">Free Heap</span>
+                        <span class="sys-value" id="sysHeap">--</span>
+                    </div>
+                    <div class="sys-item">
+                        <span class="sys-label">Refresh Rate</span>
+                        <span class="sys-value" id="sysFPS">--</span>
+                    </div>
+                    <div class="sys-item">
+                        <span class="sys-label">Uptime</span>
+                        <span class="sys-value" id="sysUptime">--</span>
+                    </div>
+                    <div class="sys-item">
+                        <span class="sys-label">Saved Patterns</span>
+                        <span class="sys-value" id="sysPatterns">--</span>
+                    </div>
+                </div>
+            </div>
+            
+            <div class="card">
+                <h2 class="card-title">OTA Firmware Update</h2>
+                <p class="card-subtitle">Use PlatformIO or Arduino IDE to push firmware wirelessly.</p>
+                <div class="ota-info">
+                    <code>pio run -t upload --upload-port <span id="otaIP">IP</span></code>
+                </div>
+                <p class="hint-text">Hostname: <strong>led-cube</strong></p>
+            </div>
+
+            <div class="card">
+                <h2 class="card-title">About</h2>
+                <p class="about-text">4x4x4 LED Cube Controller<br>
+                ESP8266 + 74HC595 + ULN2803<br>
+                Built with ESPAsyncWebServer &amp; Three.js</p>
+            </div>
+        </section>
+    </div>
+
+    <!-- Scripts -->
+    <script src="/cube_visualizer.js"></script>
+    <script src="/voxel_editor.js"></script>
+    <script>
+    // ===============================
+    // WebSocket & Main Application
+    // ===============================
+    
+    let ws = null;
+    let reconnectTimer = null;
+    let animList = [];
+    let cubeState = { layers: [0, 0, 0, 0] };
+    let status = {};
+    const dirNames = ['Up', 'Down', 'Left', 'Right', 'Forward', 'Backward'];
+
+    // Animation icons/emojis for the grid
+    const animIcons = ['🌧️','🌊','🌀','✨','📦','🔲','🐍','🔥','💧','📐','⚡','🎲','🔄','🚗','🪐','💥','💓','😮‍💨','⏳','⚡'];
+
+    // --- WebSocket Connection ---
+    function connectWebSocket() {
+        const host = window.location.hostname || '192.168.1.1';
+        const url = `ws://${host}:81`;
+        
+        ws = new WebSocket(url);
+        
+        ws.onopen = () => {
+            console.log('[WS] Connected');
+            setConnectionStatus(true);
+            hideLoading();
+            ws.send(JSON.stringify({ cmd: 'getState' }));
+            ws.send(JSON.stringify({ cmd: 'getAnims' }));
+        };
+        
+        ws.onmessage = (event) => {
+            try {
+                const data = JSON.parse(event.data);
+                handleMessage(data);
+            } catch (e) {
+                console.error('[WS] Parse error:', e);
+            }
+        };
+        
+        ws.onclose = () => {
+            console.log('[WS] Disconnected');
+            setConnectionStatus(false);
+            scheduleReconnect();
+        };
+        
+        ws.onerror = (err) => {
+            console.error('[WS] Error:', err);
+            ws.close();
+        };
+    }
+
+    function scheduleReconnect() {
+        if (reconnectTimer) clearTimeout(reconnectTimer);
+        reconnectTimer = setTimeout(connectWebSocket, 3000);
+    }
+
+    function sendCmd(cmd, params = {}) {
+        if (ws && ws.readyState === WebSocket.OPEN) {
+            ws.send(JSON.stringify({ cmd, ...params }));
+        }
+    }
+
+    // --- Message Handler ---
+    function handleMessage(data) {
+        switch (data.type) {
+            case 'status':
+                status = data;
+                updateStatusUI(data);
+                break;
+            case 'cubeState':
+                cubeState = data;
+                if (typeof updateCubeVisualizer === 'function') {
+                    updateCubeVisualizer(data.layers);
+                }
+                if (typeof updateEditorFromState === 'function') {
+                    updateEditorFromState(data.layers);
+                }
+                break;
+            case 'animList':
+                animList = data.anims;
+                buildAnimGrid(data.anims);
+                break;
+        }
+    }
+
+    // --- UI Updates ---
+    function setConnectionStatus(connected) {
+        const dot = document.getElementById('connectionDot');
+        const text = document.getElementById('connectionText');
+        dot.className = 'status-dot ' + (connected ? 'connected' : 'disconnected');
+        text.textContent = connected ? 'Connected' : 'Reconnecting...';
+    }
+
+    function hideLoading() {
+        const ls = document.getElementById('loadingScreen');
+        ls.classList.add('fade-out');
+        setTimeout(() => { ls.style.display = 'none'; }, 600);
+        document.getElementById('app').classList.remove('hidden');
+    }
+
+    function updateStatusUI(s) {
+        // Now playing
+        document.getElementById('currentAnimName').textContent = s.animation || 'None';
+        
+        // Play/pause icons
+        document.getElementById('playIcon').classList.toggle('hidden', s.playing);
+        document.getElementById('pauseIcon').classList.toggle('hidden', !s.playing);
+        
+        // Sliders (don't update if user is dragging)
+        if (!document.getElementById('speedSlider').matches(':active')) {
+            document.getElementById('speedSlider').value = s.speed;
+            document.getElementById('speedValue').textContent = s.speed + 'ms';
+        }
+        if (!document.getElementById('brightnessSlider').matches(':active')) {
+            document.getElementById('brightnessSlider').value = s.brightness;
+            document.getElementById('brightnessValue').textContent = s.brightness;
+        }
+        if (!document.getElementById('densitySlider').matches(':active')) {
+            document.getElementById('densitySlider').value = s.density;
+            document.getElementById('densityValue').textContent = s.density;
+        }
+        
+        // Direction
+        document.getElementById('directionValue').textContent = dirNames[s.direction] || 'Up';
+        document.querySelectorAll('.dir-btn').forEach(btn => {
+            btn.classList.toggle('active', parseInt(btn.dataset.dir) === s.direction);
+        });
+        
+        // Toggles
+        document.getElementById('autoplayToggle').checked = s.autoplay;
+        document.getElementById('randomToggle').checked = s.randomMode;
+        
+        // Highlight current animation in grid
+        document.querySelectorAll('.anim-tile').forEach((tile, i) => {
+            tile.classList.toggle('active', i === s.animIndex);
+        });
+        
+        // System info
+        if (document.getElementById('sysVersion')) {
+            document.getElementById('sysFPS').textContent = (s.fps || 0).toFixed(1) + ' Hz';
+            document.getElementById('sysHeap').textContent = ((s.heap || 0) / 1024).toFixed(1) + ' KB';
+            document.getElementById('sysUptime').textContent = formatUptime(s.uptime || 0);
+            document.getElementById('sysPatterns').textContent = s.patterns || 0;
+        }
+    }
+
+    function formatUptime(seconds) {
+        const h = Math.floor(seconds / 3600);
+        const m = Math.floor((seconds % 3600) / 60);
+        const s = seconds % 60;
+        return `${h}h ${m}m ${s}s`;
+    }
+
+    // --- Animation Grid ---
+    function buildAnimGrid(anims) {
+        const grid = document.getElementById('animGrid');
+        grid.innerHTML = '';
+        
+        anims.forEach((name, i) => {
+            const tile = document.createElement('button');
+            tile.className = 'anim-tile';
+            tile.dataset.index = i;
+            tile.innerHTML = `
+                <span class="anim-icon">${animIcons[i] || '🎯'}</span>
+                <span class="anim-name">${name}</span>
+            `;
+            tile.addEventListener('click', () => {
+                sendCmd('setAnim', { value: i });
+            });
+            grid.appendChild(tile);
+        });
+    }
+
+    // --- Tab Navigation ---
+    function setupTabs() {
+        document.querySelectorAll('.tab').forEach(tab => {
+            tab.addEventListener('click', () => {
+                const target = tab.dataset.tab;
+                
+                document.querySelectorAll('.tab').forEach(t => t.classList.remove('active'));
+                document.querySelectorAll('.tab-content').forEach(tc => tc.classList.remove('active'));
+                
+                tab.classList.add('active');
+                document.getElementById('tab-' + target).classList.add('active');
+                
+                // Initialize 3D view when tab is selected
+                if (target === 'visualizer' && typeof initCubeVisualizer === 'function') {
+                    setTimeout(() => initCubeVisualizer(), 100);
+                }
+            });
+        });
+    }
+
+    // --- Event Listeners ---
+    function setupControls() {
+        // Playback
+        document.getElementById('playPauseBtn').addEventListener('click', () => {
+            sendCmd(status.playing ? 'pause' : 'play');
+        });
+        document.getElementById('stopBtn').addEventListener('click', () => sendCmd('stop'));
+        document.getElementById('prevBtn').addEventListener('click', () => sendCmd('prev'));
+        document.getElementById('nextBtn').addEventListener('click', () => sendCmd('next'));
+        
+        // Toggles
+        document.getElementById('autoplayToggle').addEventListener('change', (e) => {
+            sendCmd('autoplay', { value: e.target.checked });
+        });
+        document.getElementById('randomToggle').addEventListener('change', (e) => {
+            sendCmd('random', { value: e.target.checked });
+        });
+        
+        // Sliders
+        document.getElementById('speedSlider').addEventListener('input', (e) => {
+            document.getElementById('speedValue').textContent = e.target.value + 'ms';
+        });
+        document.getElementById('speedSlider').addEventListener('change', (e) => {
+            sendCmd('speed', { value: parseInt(e.target.value) });
+        });
+        
+        document.getElementById('brightnessSlider').addEventListener('input', (e) => {
+            document.getElementById('brightnessValue').textContent = e.target.value;
+        });
+        document.getElementById('brightnessSlider').addEventListener('change', (e) => {
+            sendCmd('brightness', { value: parseInt(e.target.value) });
+        });
+        
+        document.getElementById('densitySlider').addEventListener('input', (e) => {
+            document.getElementById('densityValue').textContent = e.target.value;
+        });
+        document.getElementById('densitySlider').addEventListener('change', (e) => {
+            sendCmd('density', { value: parseInt(e.target.value) });
+        });
+        
+        // Direction buttons
+        document.querySelectorAll('.dir-btn').forEach(btn => {
+            btn.addEventListener('click', () => {
+                sendCmd('direction', { value: parseInt(btn.dataset.dir) });
+            });
+        });
+        
+        // System button
+        document.getElementById('systemBtn').addEventListener('click', () => {
+            document.querySelector('[data-tab="system"]').click();
+        });
+    }
+
+    // --- Fetch system info ---
+    async function fetchSystemInfo() {
+        try {
+            const res = await fetch('/api/status');
+            const data = await res.json();
+            document.getElementById('sysVersion').textContent = data.version || '1.0.0';
+            document.getElementById('sysIP').textContent = data.ip || '--';
+            document.getElementById('sysRSSI').textContent = (data.rssi || 0) + ' dBm';
+            document.getElementById('otaIP').textContent = data.ip || 'IP';
+        } catch (e) {
+            console.error('Failed to fetch system info:', e);
+        }
+    }
+
+    // --- Initialize ---
+    document.addEventListener('DOMContentLoaded', () => {
+        setupTabs();
+        setupControls();
+        connectWebSocket();
+        fetchSystemInfo();
+        
+        // Periodically refresh system info
+        setInterval(fetchSystemInfo, 10000);
+        
+        // Auto-hide loading after timeout
+        setTimeout(() => {
+            hideLoading();
+        }, 5000);
+    });
+    </script>
+</body>
+</html>
