@@ -400,7 +400,9 @@ ESP8266-LED-CUBE/
 ├── 📂 include/                 # Header files
 │   ├── cube_engine.h           # Cube hardware driver interface
 │   ├── animations.h            # Animation engine & effect declarations
-│   └── webserver.h             # Web + WebSocket server interface
+│   ├── webserver.h             # Web + WebSocket server interface
+│   ├── secrets.h               # 🔒 YOUR credentials (gitignored)
+│   └── secrets_template.h      # 📋 Template — copy to secrets.h
 │
 ├── 📂 src/                     # Firmware source code
 │   ├── main.cpp                # Entry point: WiFi, OTA, main loop
@@ -449,17 +451,33 @@ ESP8266-LED-CUBE/
 
 ## 📶 WiFi Configuration
 
-| Setting | Value |
-|:--------|:------|
-| **SSID** | `Keralavision@1994` |
-| **Password** | `babu7362` |
+> **🔒 Credentials are stored in `include/secrets.h`** — this file is gitignored and never committed.
+
+### First-Time Setup
+
+```bash
+# Copy the template to create your secrets file
+cp include/secrets_template.h include/secrets.h
+```
+
+Then edit `include/secrets.h` with your WiFi credentials:
+
+```cpp
+#define WIFI_SSID     "YourNetworkName"
+#define WIFI_PASSWORD "YourWiFiPassword"
+
+#define AP_SSID       "LED-Cube-AP"     // Fallback AP name
+#define AP_PASSWORD   "ledcube123"      // Fallback AP password
+
+#define OTA_HOSTNAME  "led-cube"        // mDNS hostname for OTA
+```
 
 ### AP Fallback Mode
 
 If WiFi connection fails after 20 seconds, the cube automatically creates its own access point:
 
-| Setting | Value |
-|:--------|:------|
+| Setting | Default Value |
+|:--------|:--------------|
 | **AP SSID** | `LED-Cube-AP` |
 | **AP Password** | `ledcube123` |
 | **AP IP** | `192.168.4.1` |
@@ -494,11 +512,11 @@ void AnimationEngine::animMyEffect() {
 
 ### Changing WiFi Credentials
 
-Edit `src/main.cpp`:
+Edit `include/secrets.h` (never committed to git):
 
 ```cpp
-const char* WIFI_SSID = "YourNetworkName";
-const char* WIFI_PASS = "YourPassword";
+#define WIFI_SSID     "YourNetworkName"
+#define WIFI_PASSWORD "YourPassword"
 ```
 
 ### Adjusting Refresh Rate

@@ -13,3 +13,6 @@ Thumbs.db
 
 # Gemini artifacts
 .gemini/
+
+# Secrets (never commit real credentials!)
+include/secrets.h

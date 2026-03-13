@@ -22,14 +22,7 @@
 #include "cube_engine.h"
 #include "animations.h"
 #include "webserver.h"
-
-// --- WiFi Credentials ---
-const char* WIFI_SSID = "Keralavision@1994";
-const char* WIFI_PASS = "babu7362";
-
-// AP mode fallback
-const char* AP_SSID = "LED-Cube-AP";
-const char* AP_PASS = "ledcube123";
+#include "secrets.h"
 
 // --- Global Objects ---
 CubeEngine cubeEngine;
@@ -41,7 +34,7 @@ bool connectWiFi() {
     Serial.printf("\n[WiFi] Connecting to: %s\n", WIFI_SSID);
     
     WiFi.mode(WIFI_STA);
-    WiFi.begin(WIFI_SSID, WIFI_PASS);
+    WiFi.begin(WIFI_SSID, WIFI_PASSWORD);
     
     uint8_t attempts = 0;
     while (WiFi.status() != WL_CONNECTED && attempts < 40) {
@@ -77,7 +70,7 @@ void startAPMode() {
     Serial.println(F("[WiFi] ✗ Connection failed. Starting AP mode..."));
     
     WiFi.mode(WIFI_AP);
-    WiFi.softAP(AP_SSID, AP_PASS);
+    WiFi.softAP(AP_SSID, AP_PASSWORD);
     
     Serial.print(F("[WiFi] AP SSID: "));
     Serial.println(AP_SSID);
@@ -87,7 +80,7 @@ void startAPMode() {
 
 // --- ArduinoOTA Setup ---
 void setupOTA() {
-    ArduinoOTA.setHostname("led-cube");
+    ArduinoOTA.setHostname(OTA_HOSTNAME);
     
     ArduinoOTA.onStart([]() {
         String type = (ArduinoOTA.getCommand() == U_FLASH) ? "firmware" : "filesystem";
