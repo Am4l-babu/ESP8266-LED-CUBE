@@ -23,6 +23,8 @@
     --accent-orange: #ff8800;
     --accent-red: #ff3355;
     
+    --led-color: #00e5ff;
+    
     --glow-cyan: 0 0 20px rgba(0, 229, 255, 0.4);
     --glow-magenta: 0 0 20px rgba(255, 0, 229, 0.4);
     --glow-purple: 0 0 20px rgba(168, 85, 247, 0.4);
@@ -625,6 +627,83 @@ body::before {
     margin-top: 8px;
 }
 
+/* --- Color Picker --- */
+.color-picker-group {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+}
+
+.color-picker-wrapper {
+    position: relative;
+    width: 44px;
+    height: 44px;
+    border-radius: 50%;
+    overflow: hidden;
+    border: 2px solid var(--border-color);
+    cursor: pointer;
+    transition: var(--transition);
+    flex-shrink: 0;
+}
+
+.color-picker-wrapper:hover {
+    border-color: var(--led-color);
+    box-shadow: 0 0 15px color-mix(in srgb, var(--led-color) 40%, transparent);
+    transform: scale(1.05);
+}
+
+.color-picker-wrapper input[type="color"] {
+    position: absolute;
+    top: -8px;
+    left: -8px;
+    width: calc(100% + 16px);
+    height: calc(100% + 16px);
+    border: none;
+    cursor: pointer;
+    background: none;
+}
+
+.color-picker-wrapper input[type="color"]::-webkit-color-swatch-wrapper {
+    padding: 0;
+}
+
+.color-picker-wrapper input[type="color"]::-webkit-color-swatch {
+    border: none;
+    border-radius: 50%;
+}
+
+.color-picker-wrapper input[type="color"]::-moz-color-swatch {
+    border: none;
+    border-radius: 50%;
+}
+
+.color-hex-value {
+    font-family: var(--font-mono);
+    font-size: 0.8rem;
+    font-weight: 600;
+    color: var(--led-color);
+    text-transform: uppercase;
+    letter-spacing: 1px;
+}
+
+/* --- Dashboard Mini 3D View --- */
+.dashboard-cube-card {
+    padding: 8px;
+}
+
+.dashboard-cube-canvas {
+    width: 100%;
+    height: 220px;
+    border-radius: var(--radius);
+    overflow: hidden;
+    background: radial-gradient(ellipse at center, #0d0d2b 0%, #050510 100%);
+}
+
+.dashboard-cube-canvas canvas {
+    width: 100% !important;
+    height: 100% !important;
+}
+
 /* --- Voxel Editor --- */
 .editor-controls {
     display: flex;
@@ -719,9 +798,9 @@ body::before {
 }
 
 .voxel-cell.on {
-    background: var(--accent-cyan);
-    border-color: var(--accent-cyan);
-    box-shadow: 0 0 15px rgba(0, 229, 255, 0.5), inset 0 0 10px rgba(255, 255, 255, 0.2);
+    background: var(--led-color);
+    border-color: var(--led-color);
+    box-shadow: 0 0 15px color-mix(in srgb, var(--led-color) 50%, transparent), inset 0 0 10px rgba(255, 255, 255, 0.2);
 }
 
 .voxel-cell .coord {

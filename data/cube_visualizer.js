@@ -2,18 +2,64 @@
 // cube_visualizer.js - Three.js 3D LED Cube
 // Interactive 3D visualization synchronized
 // with the real LED cube via WebSocket
+// Supports: Full-screen tab + Dashboard mini view
 // ==========================================
 
+// --- Full-screen visualizer state ---
 let cubeScene, cubeCamera, cubeRenderer, cubeControls;
 let ledSpheres = [];
 let cubeInitialized = false;
 let animFrameId = null;
 
-// LED colors
-const LED_ON_COLOR = new THREE.Color(0x00e5ff);
-const LED_OFF_COLOR = new THREE.Color(0x111122);
-const LED_ON_EMISSIVE = new THREE.Color(0x00aacc);
-const LED_OFF_EMISSIVE = new THREE.Color(0x000000);
+// --- Dashboard mini visualizer state ---
+let dashScene, dashCamera, dashRenderer;
+let dashLedSpheres = [];
+let dashInitialized = false;
+let dashAnimFrameId = null;
+let dashTheta = 0;
+
+// LED colors (dynamic)
+let currentLedColor = '#00e5ff';
+let LED_ON_COLOR = new THREE.Color(0x00e5ff);
+let LED_OFF_COLOR = new THREE.Color(0x111122);
+let LED_ON_EMISSIVE = new THREE.Color(0x00aacc);
+let LED_OFF_EMISSIVE = new THREE.Color(0x000000);
+
+// Scene point lights (to recolor on LED color change)
+let fullPointLight1 = null;
+let dashPointLight1 = null;
+
+// Set the LED on-color from a hex string (e.g. "#ff00aa")
+function setLedColor(hex) {
+    currentLedColor = hex;
+    LED_ON_COLOR.set(hex);
+    // Emissive is a slightly dimmed version
+    LED_ON_EMISSIVE.set(hex);
+    LED_ON_EMISSIVE.multiplyScalar(0.7);
+
+    // Update point lights to match
+    if (fullPointLight1) fullPointLight1.color.set(hex);
+    if (dashPointLight1) dashPointLight1.color.set(hex);
+
+    // Update all ON LEDs in full view
+    ledSpheres.forEach(sphere => {
+        if (sphere.userData.on) {
+            sphere.material.color.copy(LED_ON_COLOR);
+            sphere.material.emissive.copy(LED_ON_EMISSIVE);
+        }
+    });
+    // Update all ON LEDs in dashboard view
+    dashLedSpheres.forEach(sphere => {
+        if (sphere.userData.on) {
+            sphere.material.color.copy(LED_ON_COLOR);
+            sphere.material.emissive.copy(LED_ON_EMISSIVE);
+        }
+    });
+}
+
+// ==========================================
+// FULL-SCREEN 3D VISUALIZER (Tab)
+// ==========================================
 
 function initCubeVisualizer() {
     if (cubeInitialized) {
@@ -47,9 +93,9 @@ function initCubeVisualizer() {
     const ambient = new THREE.AmbientLight(0x222244, 0.5);
     cubeScene.add(ambient);
 
-    const point1 = new THREE.PointLight(0x00e5ff, 0.5, 20);
-    point1.position.set(5, 5, 5);
-    cubeScene.add(point1);
+    fullPointLight1 = new THREE.PointLight(LED_ON_COLOR.getHex(), 0.5, 20);
+    fullPointLight1.position.set(5, 5, 5);
+    cubeScene.add(fullPointLight1);
 
     const point2 = new THREE.PointLight(0xff00e5, 0.3, 20);
     point2.position.set(-5, 3, -5);
@@ -62,9 +108,110 @@ function initCubeVisualizer() {
     cubeScene.add(grid);
 
     // Create LED spheres (4x4x4)
+    createLedSpheres(cubeScene, ledSpheres);
+
+    // Draw wires
+    drawWires(cubeScene);
+
+    // Simple orbit controls (manual implementation)
+    setupOrbitControls(container);
+
+    // Handle resize
+    window.addEventListener('resize', handleResize);
+
+    cubeInitialized = true;
+
+    // Start render loop
+    animateFullView();
+}
+
+function handleResize() {
+    const container = document.getElementById('cubeCanvas');
+    if (!container || !cubeRenderer) return;
+
+    const w = container.clientWidth;
+    const h = container.clientHeight;
+
+    cubeCamera.aspect = w / h;
+    cubeCamera.updateProjectionMatrix();
+    cubeRenderer.setSize(w, h);
+}
+
+// ==========================================
+// DASHBOARD MINI 3D VIEW (auto-rotating)
+// ==========================================
+
+function initDashboardCube() {
+    if (dashInitialized) return;
+
+    const container = document.getElementById('dashboardCubeCanvas');
+    if (!container) return;
+
+    const w = container.clientWidth;
+    const h = container.clientHeight;
+
+    // Scene
+    dashScene = new THREE.Scene();
+    dashScene.fog = new THREE.Fog(0x050510, 12, 25);
+
+    // Camera
+    dashCamera = new THREE.PerspectiveCamera(45, w / h, 0.1, 100);
+    dashCamera.position.set(6, 5, 8);
+    dashCamera.lookAt(0, 0, 0);
+
+    // Renderer
+    dashRenderer = new THREE.WebGLRenderer({ antialias: true, alpha: true });
+    dashRenderer.setSize(w, h);
+    dashRenderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
+    dashRenderer.setClearColor(0x050510);
+    container.appendChild(dashRenderer.domElement);
+
+    // Lights
+    const ambient = new THREE.AmbientLight(0x222244, 0.5);
+    dashScene.add(ambient);
+
+    dashPointLight1 = new THREE.PointLight(LED_ON_COLOR.getHex(), 0.5, 20);
+    dashPointLight1.position.set(5, 5, 5);
+    dashScene.add(dashPointLight1);
+
+    const point2 = new THREE.PointLight(0xff00e5, 0.3, 20);
+    point2.position.set(-5, 3, -5);
+    dashScene.add(point2);
+
+    // Grid
+    const grid = new THREE.GridHelper(6, 8, 0x1a1a3a, 0x0d0d2b);
+    grid.position.y = -2;
+    dashScene.add(grid);
+
+    // LED spheres
+    createLedSpheres(dashScene, dashLedSpheres);
+
+    // Wires
+    drawWires(dashScene);
+
+    // Resize observer for dashboard card
+    const resizeObserver = new ResizeObserver(() => {
+        const cw = container.clientWidth;
+        const ch = container.clientHeight;
+        if (cw > 0 && ch > 0) {
+            dashCamera.aspect = cw / ch;
+            dashCamera.updateProjectionMatrix();
+            dashRenderer.setSize(cw, ch);
+        }
+    });
+    resizeObserver.observe(container);
+
+    dashInitialized = true;
+    animateDashView();
+}
+
+// ==========================================
+// SHARED HELPERS
+// ==========================================
+
+function createLedSpheres(scene, sphereArray) {
     const spacing = 1.5;
     const offset = (3 * spacing) / 2;
-
     const sphereGeo = new THREE.SphereGeometry(0.2, 16, 16);
 
     for (let z = 0; z < 4; z++) {
@@ -88,19 +235,23 @@ function initCubeVisualizer() {
                 );
                 sphere.userData = { x, y, z, on: false };
 
-                cubeScene.add(sphere);
-                ledSpheres.push(sphere);
+                scene.add(sphere);
+                sphereArray.push(sphere);
             }
         }
     }
+}
 
-    // Draw connection wires (columns)
-    const wireMat = new THREE.LineBasicMaterial({ 
-        color: 0x1a1a3a, 
-        transparent: true, 
-        opacity: 0.3 
+function drawWires(scene) {
+    const spacing = 1.5;
+    const offset = (3 * spacing) / 2;
+    const wireMat = new THREE.LineBasicMaterial({
+        color: 0x1a1a3a,
+        transparent: true,
+        opacity: 0.3
     });
 
+    // Columns
     for (let x = 0; x < 4; x++) {
         for (let y = 0; y < 4; y++) {
             const points = [];
@@ -112,12 +263,11 @@ function initCubeVisualizer() {
                 ));
             }
             const geo = new THREE.BufferGeometry().setFromPoints(points);
-            const line = new THREE.Line(geo, wireMat);
-            cubeScene.add(line);
+            scene.add(new THREE.Line(geo, wireMat));
         }
     }
 
-    // Draw layer planes (horizontal wires)
+    // Layer planes
     for (let z = 0; z < 4; z++) {
         for (let x = 0; x < 4; x++) {
             const points = [];
@@ -129,8 +279,7 @@ function initCubeVisualizer() {
                 ));
             }
             const geo = new THREE.BufferGeometry().setFromPoints(points);
-            const line = new THREE.Line(geo, wireMat);
-            cubeScene.add(line);
+            scene.add(new THREE.Line(geo, wireMat));
         }
         for (let y = 0; y < 4; y++) {
             const points = [];
@@ -142,33 +291,9 @@ function initCubeVisualizer() {
                 ));
             }
             const geo = new THREE.BufferGeometry().setFromPoints(points);
-            const line = new THREE.Line(geo, wireMat);
-            cubeScene.add(line);
+            scene.add(new THREE.Line(geo, wireMat));
         }
     }
-
-    // Simple orbit controls (manual implementation)
-    setupOrbitControls(container);
-
-    // Handle resize
-    window.addEventListener('resize', handleResize);
-
-    cubeInitialized = true;
-
-    // Start render loop
-    animate();
-}
-
-function handleResize() {
-    const container = document.getElementById('cubeCanvas');
-    if (!container || !cubeRenderer) return;
-
-    const w = container.clientWidth;
-    const h = container.clientHeight;
-
-    cubeCamera.aspect = w / h;
-    cubeCamera.updateProjectionMatrix();
-    cubeRenderer.setSize(w, h);
 }
 
 // Simple orbit controls
@@ -230,13 +355,12 @@ function setupOrbitControls(container) {
     updateCamera();
 }
 
-function animate() {
-    animFrameId = requestAnimationFrame(animate);
+// ==========================================
+// RENDER LOOPS
+// ==========================================
 
-    // Subtle auto-rotation when not interacting
-    // (commented out, enable if desired)
-    // cubeCamera.position.applyAxisAngle(new THREE.Vector3(0, 1, 0), 0.002);
-    // cubeCamera.lookAt(0, 0, 0);
+function animateFullView() {
+    animFrameId = requestAnimationFrame(animateFullView);
 
     // Animate LED glow pulsing for ON LEDs
     ledSpheres.forEach(sphere => {
@@ -251,9 +375,45 @@ function animate() {
     }
 }
 
-// Update LED states from WebSocket data
+function animateDashView() {
+    dashAnimFrameId = requestAnimationFrame(animateDashView);
+
+    // Auto-rotate
+    dashTheta += 0.004;
+    const radius = 10;
+    const phi = 0.65;
+    dashCamera.position.x = radius * Math.sin(phi) * Math.cos(dashTheta);
+    dashCamera.position.y = radius * Math.cos(phi);
+    dashCamera.position.z = radius * Math.sin(phi) * Math.sin(dashTheta);
+    dashCamera.lookAt(0, 0, 0);
+
+    // Animate LED glow pulsing for ON LEDs
+    dashLedSpheres.forEach(sphere => {
+        if (sphere.userData.on) {
+            const pulse = 0.8 + 0.2 * Math.sin(Date.now() * 0.003 + sphere.userData.x + sphere.userData.z);
+            sphere.material.emissiveIntensity = pulse;
+        }
+    });
+
+    if (dashRenderer && dashScene && dashCamera) {
+        dashRenderer.render(dashScene, dashCamera);
+    }
+}
+
+// ==========================================
+// UPDATE LED STATES (from WebSocket)
+// ==========================================
+
 function updateCubeVisualizer(layers) {
-    if (!cubeInitialized || !layers) return;
+    if (!layers) return;
+
+    // Update both views
+    updateSphereStates(ledSpheres, layers);
+    updateSphereStates(dashLedSpheres, layers);
+}
+
+function updateSphereStates(sphereArray, layers) {
+    if (!sphereArray.length) return;
 
     for (let z = 0; z < 4; z++) {
         const layerData = layers[z] || 0;
@@ -262,7 +422,7 @@ function updateCubeVisualizer(layers) {
                 const bitPos = y * 4 + x;
                 const isOn = (layerData >> bitPos) & 1;
                 const idx = z * 16 + y * 4 + x;
-                const sphere = ledSpheres[idx];
+                const sphere = sphereArray[idx];
 
                 if (sphere && sphere.userData.on !== !!isOn) {
                     sphere.userData.on = !!isOn;
