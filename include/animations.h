@@ -16,6 +16,7 @@
 
 #include <Arduino.h>
 #include "cube_engine.h"
+#include "music_controller.h"
 
 // --- Animation Types ---
 enum AnimationType {
@@ -39,6 +40,15 @@ enum AnimationType {
     ANIM_BREATHING,
     ANIM_FALLING_SAND,
     ANIM_LIGHTNING,
+    // --- Music-reactive animations (v2) ---
+    ANIM_BASS_PULSE,
+    ANIM_FREQ_TOWER,
+    ANIM_BEAT_RIPPLE,
+    ANIM_SPIRAL_BEAT,
+    ANIM_PARTICLE_RAIN,
+    ANIM_MUSIC_FIRE,
+    ANIM_ORBIT_SYNC,
+    ANIM_BEAT_EXPLOSION,
     ANIM_COUNT  // Total number of animations
 };
 
@@ -58,7 +68,10 @@ const char* const ANIM_NAMES[] = {
     "Expand Cube", "Shrink Cube", "Snake", "Fire",
     "Ripple", "Plane Sweep", "Voxel Bounce", "Random Voxel",
     "Rotating Planes", "Knight Rider", "Orbiting Point", "Cube Explosion",
-    "Heartbeat", "Breathing", "Falling Sand", "Lightning"
+    "Heartbeat", "Breathing", "Falling Sand", "Lightning",
+    // Music-reactive (v2)
+    "Bass Pulse", "Freq Tower", "Beat Ripple", "Spiral Beat",
+    "Particle Rain", "Music Fire", "Orbit Sync", "Beat Explosion"
 };
 
 // --- Animation Parameters ---
@@ -68,12 +81,16 @@ struct AnimationParams {
     uint8_t direction;    // Direction enum
     uint8_t density;      // Particle density (1-16)
     uint32_t duration;    // Duration in ms (0 = infinite)
+    char ledColor[8];     // LED hex color string e.g. "#00e5ff"
 };
 
 // --- Animation Engine ---
 class AnimationEngine {
 public:
     AnimationEngine(CubeEngine& cube);
+    
+    // Set music data source for music-reactive animations
+    void setMusicData(const MusicData* md);
     
     void begin();
     void update();  // Call in loop() - non-blocking
@@ -106,6 +123,8 @@ public:
     void setDensity(uint8_t density);
     uint8_t getDensity();
     void setDuration(uint32_t duration);
+    void setLedColor(const char* color);
+    const char* getLedColor();
     AnimationParams getParams();
     
     // --- Pattern Storage ---
@@ -139,6 +158,10 @@ private:
     float angle;
     uint8_t sandGrid[4][4][4];
     
+    // Music data pointer (set by MusicController)
+    const MusicData* musicData;
+    uint8_t explosionFrame;
+    
     // --- Animation Implementations ---
     void animRain();
     void animWave();
@@ -160,6 +183,16 @@ private:
     void animBreathing();
     void animFallingSand();
     void animLightning();
+    
+    // --- Music-Reactive Animations (v2) ---
+    void animBassPulse();
+    void animFreqTower();
+    void animBeatRipple();
+    void animSpiralBeat();
+    void animParticleRain();
+    void animMusicFire();
+    void animOrbitSync();
+    void animBeatExplosion();
     
     // --- Helpers ---
     void resetState();

@@ -144,6 +144,25 @@
                         <button class="dir-btn" data-dir="5">◇</button>
                     </div>
                 </div>
+                <div class="slider-group">
+                    <label class="slider-label">
+                        <span>LED Colour</span>
+                        <span class="color-hex-value" id="colorHexValue">#00e5ff</span>
+                    </label>
+                    <div class="color-picker-group">
+                        <div class="color-picker-wrapper">
+                            <input type="color" id="ledColorPicker" value="#00e5ff" title="Choose LED colour">
+                        </div>
+                        <span class="slider-value" style="color: var(--text-secondary); font-family: var(--font-main); font-weight: 400;">Pick a colour for the simulation</span>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Dashboard Mini 3D View -->
+            <div class="card dashboard-cube-card">
+                <h2 class="card-title">Live 3D Preview</h2>
+                <div id="dashboardCubeCanvas" class="dashboard-cube-canvas"></div>
+                <p class="hint-text">Auto-rotating • Switch to 3D View tab for interactive control</p>
             </div>
 
             <!-- Animation Grid -->
@@ -169,10 +188,33 @@
                 <h2 class="card-title">Voxel Editor</h2>
                 <p class="card-subtitle">Click cells to toggle LEDs. Edit one layer at a time.</p>
                 
-                <div class="editor-controls">
+                <div class="editor-mode-toggle">
+                    <label class="toggle-btn active" id="modePattern">
+                        <input type="radio" name="editorMode" value="pattern" checked>
+                        <span>Draw Pattern</span>
+                    </label>
+                    <label class="toggle-btn" id="modePaint">
+                        <input type="radio" name="editorMode" value="paint">
+                        <span>Paint Hardware Colours</span>
+                    </label>
+                </div>
+
+                <div class="editor-controls" id="patternControls">
                     <button class="btn btn-outline" id="editorClear">Clear All</button>
                     <button class="btn btn-outline" id="editorFill">Fill All</button>
                     <button class="btn btn-primary" id="editorSend">Send to Cube</button>
+                </div>
+
+                <div class="editor-controls hidden" id="paintControls">
+                    <div class="color-picker-group">
+                        <div class="color-picker-wrapper">
+                            <input type="color" id="paintColorPicker" value="#00e5ff" title="Choose LED colour to paint">
+                        </div>
+                        <span class="color-hex-value" id="paintHexValue">#00E5FF</span>
+                    </div>
+                    <button class="btn btn-outline" id="paintFillLayer">Fill Layer</button>
+                    <button class="btn btn-outline" id="paintFillAll">Fill All</button>
+                    <button class="btn btn-primary" id="paintSave">Save Mapping</button>
                 </div>
                 
                 <div class="layer-tabs">
@@ -366,9 +408,21 @@
         document.getElementById('app').classList.remove('hidden');
     }
 
+    // --- Apply LED Color from status ---
+    function applyLedColor(color) {
+        if (!color) return;
+        document.getElementById('ledColorPicker').value = color;
+        document.getElementById('colorHexValue').textContent = color;
+        document.documentElement.style.setProperty('--led-color', color);
+        if (typeof setLedColor === 'function') setLedColor(color);
+    }
+
     function updateStatusUI(s) {
         // Now playing
         document.getElementById('currentAnimName').textContent = s.animation || 'None';
+        
+        // LED color
+        if (s.ledColor) applyLedColor(s.ledColor);
         
         // Play/pause icons
         document.getElementById('playIcon').classList.toggle('hidden', s.playing);
@@ -510,6 +564,17 @@
         document.getElementById('systemBtn').addEventListener('click', () => {
             document.querySelector('[data-tab="system"]').click();
         });
+        
+        // LED Color picker
+        document.getElementById('ledColorPicker').addEventListener('input', (e) => {
+            const color = e.target.value;
+            document.getElementById('colorHexValue').textContent = color;
+            document.documentElement.style.setProperty('--led-color', color);
+            if (typeof setLedColor === 'function') setLedColor(color);
+        });
+        document.getElementById('ledColorPicker').addEventListener('change', (e) => {
+            sendCmd('setColor', { value: e.target.value });
+        });
     }
 
     // --- Fetch system info ---
@@ -532,6 +597,11 @@
         setupControls();
         connectWebSocket();
         fetchSystemInfo();
+        
+        // Initialize dashboard mini 3D cube
+        if (typeof initDashboardCube === 'function') {
+            setTimeout(() => initDashboardCube(), 200);
+        }
         
         // Periodically refresh system info
         setInterval(fetchSystemInfo, 10000);

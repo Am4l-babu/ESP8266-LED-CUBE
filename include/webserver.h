@@ -5,6 +5,7 @@
  * Uses WebSocketsServer (links2004) for real-time bidirectional control.
  * Serves static files from LittleFS (HTML, CSS, JS).
  * Provides system info API endpoint.
+ * v2: Handles music data messages from browser for music-reactive mode.
  */
 
 #ifndef WEBSERVER_H
@@ -17,10 +18,11 @@
 #include <ArduinoJson.h>
 #include "cube_engine.h"
 #include "animations.h"
+#include "music_controller.h"
 
 class WebServerManager {
 public:
-    WebServerManager(CubeEngine& cube, AnimationEngine& anim);
+    WebServerManager(CubeEngine& cube, AnimationEngine& anim, MusicController& music);
     
     void begin();
     void loop();   // Must be called in main loop
@@ -32,6 +34,7 @@ public:
 private:
     CubeEngine& cube;
     AnimationEngine& anim;
+    MusicController& music;
     
     ESP8266WebServer server;
     WebSocketsServer webSocket;
