@@ -40,6 +40,7 @@
 🎬  20 built-in animation effects with adjustable parameters
 🌐  WiFi control — no wires, no apps, just open a browser
 🧊  Real-time Three.js 3D cube visualization in your browser
+🖌️  Paint Mode — Map your physical LED colours to the 3D simulation
 ✏️  Voxel editor — draw custom patterns and save them
 📡  WebSocket communication for instant, lag-free control
 🔄  OTA firmware updates — flash wirelessly over WiFi
@@ -207,6 +208,7 @@ Control your cube from any device on the same WiFi network — just open the cub
 
 | Feature | Description |
 |:--------|:------------|
+| 🧊 **Live 3D Preview** | Mini auto-rotating 3D visualization right on the dashboard |
 | 🎬 **Animation Grid** | Visual tile grid with icons — tap to switch |
 | ▶️ **Playback Controls** | Play, Pause, Stop, Previous, Next |
 | 🔀 **Autoplay & Shuffle** | Automatic animation cycling with random mode |
@@ -225,9 +227,11 @@ A real-time **Three.js** 3D model of your LED cube — right in the browser:
 
 ### Voxel Pattern Editor
 
-Design your own 3D patterns:
+Design your own 3D patterns and configure hardware colours:
 
-- ✏️ **Click cells** to toggle individual LEDs on/off
+- ✏️ **Draw Pattern Mode**: Click cells to toggle individual LEDs on/off, creating custom animation frames.
+- 🖌️ **Paint Hardware Colours Mode**: Map the physical colours of your soldered LEDs into the 3D simulation so it perfectly mirrors your hardware.
+- 🎨 **Colour Tools**: Pick any hex colour and "Fill Layer" or "Fill All" instantly.
 - 📚 **Layer tabs** — edit one layer at a time (Bottom → Top)
 - 💾 **10 save slots** — store patterns on the ESP's flash
 - 📋 **JSON export** — copy pattern data to clipboard

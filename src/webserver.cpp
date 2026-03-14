@@ -37,8 +37,8 @@
 #include "webserver.h"
 #include <LittleFS.h>
 
-WebServerManager::WebServerManager(CubeEngine& cubeRef, AnimationEngine& animRef)
-    : cube(cubeRef), anim(animRef), server(80), webSocket(81) {
+WebServerManager::WebServerManager(CubeEngine& cubeRef, AnimationEngine& animRef, MusicController& musicRef)
+    : cube(cubeRef), anim(animRef), music(musicRef), server(80), webSocket(81) {
     lastBroadcast = 0;
     broadcastInterval = 200;  // Broadcast state every 200ms
 }
@@ -116,10 +116,59 @@ void WebServerManager::setupRoutes() {
         doc["density"] = anim.getDensity();
         doc["patterns"] = anim.getPatternCount();
         doc["ip"] = WiFi.localIP().toString();
+        doc["musicMode"] = music.getModeName();
+        doc["musicActive"] = music.isActive();
+        doc["ledColor"] = anim.getLedColor();
         
         String response;
         serializeJson(doc, response);
         this->server.send(200, "application/json", response);
+    });
+    
+    // API: Per-LED hardware color mapping
+    server.on("/api/colors", HTTP_GET, [this]() {
+        if (!LittleFS.exists("/colors.json")) {
+            // Return default 64 cyan colors
+            String defaultColors = "{\"colors\":[";
+            for(int i=0; i<64; i++) {
+                defaultColors += "\"#00e5ff\"";
+                if(i < 63) defaultColors += ",";
+            }
+            defaultColors += "]}";
+            this->server.send(200, "application/json", defaultColors);
+            return;
+        }
+        
+        File file = LittleFS.open("/colors.json", "r");
+        if (file) {
+            this->server.streamFile(file, "application/json");
+            file.close();
+        } else {
+            this->server.send(500, "application/json", "{\"error\":\"read failed\"}");
+        }
+    });
+    
+    server.on("/api/colors", HTTP_POST, [this]() {
+        if (this->server.hasArg("plain")) {
+            String body = this->server.arg("plain");
+            File file = LittleFS.open("/colors.json", "w");
+            if (file) {
+                file.print(body);
+                file.close();
+                this->server.send(200, "application/json", "{\"status\":\"success\"}");
+                
+                // Tell clients to reload the color map
+                StaticJsonDocument<64> doc;
+                doc["type"] = "colorMapUpdate";
+                String msg;
+                serializeJson(doc, msg);
+                this->webSocket.broadcastTXT(msg);
+            } else {
+                this->server.send(500, "application/json", "{\"error\":\"write failed\"}");
+            }
+        } else {
+            this->server.send(400, "application/json", "{\"error\":\"bad request\"}");
+        }
     });
     
     // Serve all other static files from LittleFS
@@ -230,6 +279,11 @@ void WebServerManager::processMessage(uint8_t clientNum, uint8_t* data, size_t l
     else if (strcmp(cmd, "random") == 0) {
         anim.setRandomMode(doc["value"] | false);
     }
+    // --- LED Color ---
+    else if (strcmp(cmd, "setColor") == 0) {
+        const char* color = doc["value"];
+        if (color) anim.setLedColor(color);
+    }
     // --- Voxel Control ---
     else if (strcmp(cmd, "setVoxel") == 0) {
         uint8_t x = doc["x"] | 0;
@@ -271,6 +325,42 @@ void WebServerManager::processMessage(uint8_t clientNum, uint8_t* data, size_t l
     else if (strcmp(cmd, "getAnims") == 0) {
         sendAnimationList(clientNum);
     }
+    // --- Music Control (v2) ---
+    else if (strcmp(cmd, "music_data") == 0) {
+        float tempo = doc["tempo"] | 120.0f;
+        float energy = doc["energy"] | 0.5f;
+        float danceability = doc["danceability"] | 0.5f;
+        float loudness = doc["loudness"] | -10.0f;
+        float valence = doc["valence"] | 0.5f;
+        float progress = doc["progress"] | 0.0f;
+        bool beat = doc["beat"] | false;
+        music.setMusicData(tempo, energy, danceability, loudness, valence, progress, beat);
+        
+        // Spectral bands
+        JsonArray bands = doc["spectral"];
+        if (bands && bands.size() >= 4) {
+            music.setSpectralData(bands[0], bands[1], bands[2], bands[3]);
+        }
+    }
+    else if (strcmp(cmd, "setMode") == 0) {
+        const char* modeName = doc["value"];
+        if (modeName) {
+            if (strcmp(modeName, "spotify") == 0) music.setMode(MODE_SPOTIFY);
+            else if (strcmp(modeName, "microphone") == 0) music.setMode(MODE_MICROPHONE);
+            else if (strcmp(modeName, "hybrid") == 0) music.setMode(MODE_HYBRID);
+            else if (strcmp(modeName, "ai") == 0) music.setMode(MODE_AI);
+        }
+    }
+    else if (strcmp(cmd, "aiParams") == 0) {
+        if (doc.containsKey("intensity")) music.setAIIntensity(doc["intensity"] | 128);
+        if (doc.containsKey("randomness")) music.setAIRandomness(doc["randomness"] | 128);
+        if (doc.containsKey("complexity")) music.setAIComplexity(doc["complexity"] | 128);
+    }
+    else if (strcmp(cmd, "aiSelect") == 0) {
+        // Trigger AI auto-selection of animation
+        int suggested = music.suggestAnimation();
+        anim.setAnimation((AnimationType)suggested);
+    }
     
     // Broadcast updated status to all clients
     broadcastStatus();
@@ -294,6 +384,7 @@ void WebServerManager::sendStatus(uint8_t clientNum) {
     doc["heap"] = ESP.getFreeHeap();
     doc["uptime"] = millis() / 1000;
     doc["patterns"] = anim.getPatternCount();
+    doc["ledColor"] = anim.getLedColor();
     
     String response;
     serializeJson(doc, response);
@@ -368,6 +459,7 @@ void WebServerManager::broadcastStatus() {
     doc["heap"] = ESP.getFreeHeap();
     doc["uptime"] = millis() / 1000;
     doc["patterns"] = anim.getPatternCount();
+    doc["ledColor"] = anim.getLedColor();
     
     String response;
     serializeJson(doc, response);

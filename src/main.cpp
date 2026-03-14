@@ -21,13 +21,15 @@
 
 #include "cube_engine.h"
 #include "animations.h"
+#include "music_controller.h"
 #include "webserver.h"
 #include "secrets.h"
 
 // --- Global Objects ---
 CubeEngine cubeEngine;
 AnimationEngine animEngine(cubeEngine);
-WebServerManager webServer(cubeEngine, animEngine);
+MusicController musicController;
+WebServerManager webServer(cubeEngine, animEngine, musicController);
 
 // --- WiFi Connection ---
 bool connectWiFi() {

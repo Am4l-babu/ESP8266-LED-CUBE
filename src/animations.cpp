@@ -1,6 +1,7 @@
 /*
- * animations.cpp - 20 LED Cube Animation Effects
+ * animations.cpp - 28 LED Cube Animation Effects
  * 
+ * 20 standard animations + 8 music-reactive animations (v2).
  * All animations are non-blocking, using millis() for timing.
  * Each animation function is called repeatedly from update().
  * The 'step' counter tracks the animation progress and resets when the
@@ -18,6 +19,7 @@ AnimationEngine::AnimationEngine(CubeEngine& cubeRef) : cube(cubeRef) {
     params.direction = DIR_DOWN;
     params.density = 4;
     params.duration = 0;
+    strncpy(params.ledColor, "#00e5ff", sizeof(params.ledColor));
     
     playing = true;
     autoplay = false;
@@ -29,10 +31,12 @@ AnimationEngine::AnimationEngine(CubeEngine& cubeRef) : cube(cubeRef) {
     lastAutoplaySwitch = 0;
     
     resetState();
+    musicData = nullptr;
+    explosionFrame = 0;
 }
 
 void AnimationEngine::begin() {
-    Serial.println(F("[AnimEngine] Initialized with 20 animations"));
+    Serial.println(F("[AnimEngine] Initialized with 28 animations (20 + 8 music)"));
     animStartTime = millis();
     lastAutoplaySwitch = millis();
 }
@@ -46,6 +50,11 @@ void AnimationEngine::resetState() {
     snakeX[0] = 0; snakeY[0] = 0; snakeZ[0] = 0;
     angle = 0;
     memset(sandGrid, 0, sizeof(sandGrid));
+    explosionFrame = 0;
+}
+
+void AnimationEngine::setMusicData(const MusicData* md) {
+    musicData = md;
 }
 
 // --- Main Update (NON-BLOCKING) ---
@@ -108,6 +117,15 @@ void AnimationEngine::update() {
         case ANIM_BREATHING:       animBreathing(); break;
         case ANIM_FALLING_SAND:    animFallingSand(); break;
         case ANIM_LIGHTNING:       animLightning(); break;
+        // Music-reactive (v2)
+        case ANIM_BASS_PULSE:      animBassPulse(); break;
+        case ANIM_FREQ_TOWER:      animFreqTower(); break;
+        case ANIM_BEAT_RIPPLE:     animBeatRipple(); break;
+        case ANIM_SPIRAL_BEAT:     animSpiralBeat(); break;
+        case ANIM_PARTICLE_RAIN:   animParticleRain(); break;
+        case ANIM_MUSIC_FIRE:      animMusicFire(); break;
+        case ANIM_ORBIT_SYNC:      animOrbitSync(); break;
+        case ANIM_BEAT_EXPLOSION:  animBeatExplosion(); break;
         default: break;
     }
 }
@@ -172,6 +190,15 @@ uint8_t AnimationEngine::getDensity() { return params.density; }
 
 void AnimationEngine::setDuration(uint32_t duration) { params.duration = duration; }
 AnimationParams AnimationEngine::getParams() { return params; }
+
+void AnimationEngine::setLedColor(const char* color) {
+    if (color && color[0] == '#' && strlen(color) <= 7) {
+        strncpy(params.ledColor, color, sizeof(params.ledColor));
+        params.ledColor[sizeof(params.ledColor) - 1] = '\0';
+    }
+}
+
+const char* AnimationEngine::getLedColor() { return params.ledColor; }
 
 // --- Pattern Storage (LittleFS) ---
 
@@ -699,3 +726,249 @@ void AnimationEngine::animLightning() {
         }
     }
 }
+
+// ========================================
+// MUSIC-REACTIVE ANIMATIONS (v2)
+// ========================================
+
+// Helper: get music data, or return defaults if absent
+static MusicData defaultMusic() {
+    MusicData md;
+    memset(&md, 0, sizeof(md));
+    md.tempo = 120;
+    md.energy = 0.5;
+    md.active = false;
+    return md;
+}
+
+// --- BASS PULSE: Bottom layer expands upward on beat ---
+void AnimationEngine::animBassPulse() {
+    MusicData md = musicData ? *musicData : defaultMusic();
+
+    // Fade existing layers down
+    for (uint8_t z = CUBE_Z - 1; z > 0; z--) {
+        uint16_t below = cube.getLayer(z - 1);
+        // Decay: keep ~40% of bits
+        uint16_t decayed = 0;
+        for (uint8_t b = 0; b < 16; b++) {
+            if ((below >> b) & 1 && random(100) < 40) decayed |= (1 << b);
+        }
+        cube.setLayer(z, decayed);
+    }
+
+    // On beat: fill bottom layer based on sub-bass energy
+    if (md.beat || (!md.active && step % 8 == 0)) {
+        uint16_t base = 0;
+        uint8_t fill = md.active ? (uint8_t)(md.spectral[0] * 16) : 8;
+        for (uint8_t i = 0; i < fill; i++) {
+            base |= (1 << random(16));
+        }
+        cube.setLayer(0, base);
+    } else {
+        // Dim base between beats
+        uint16_t cur = cube.getLayer(0);
+        uint16_t dimmed = 0;
+        for (uint8_t b = 0; b < 16; b++) {
+            if ((cur >> b) & 1 && random(100) < 60) dimmed |= (1 << b);
+        }
+        cube.setLayer(0, dimmed);
+    }
+    step++;
+}
+
+// --- FREQ TOWER: 4 columns per spectral band, height = intensity ---
+void AnimationEngine::animFreqTower() {
+    MusicData md = musicData ? *musicData : defaultMusic();
+    cube.clearAll();
+
+    // Each column of the cube (4 columns along X) represents a frequency band
+    for (uint8_t band = 0; band < 4; band++) {
+        float level = md.active ? md.spectral[band] : (sin(angle + band) + 1.0) / 2.0;
+        uint8_t height = (uint8_t)(level * CUBE_Z);
+        height = constrain(height, 0, CUBE_Z);
+
+        for (uint8_t z = 0; z < height; z++) {
+            for (uint8_t y = 0; y < CUBE_Y; y++) {
+                cube.setVoxel(band, y, z);
+            }
+        }
+    }
+    angle += 0.15;
+    if (angle > 2 * PI) angle -= 2 * PI;
+}
+
+// --- BEAT RIPPLE: Beat triggers concentric diamond waves from center ---
+void AnimationEngine::animBeatRipple() {
+    MusicData md = musicData ? *musicData : defaultMusic();
+
+    // On beat, reset ripple
+    if (md.beat || (!md.active && step % 12 == 0)) {
+        phase = 0;  // Reset ripple expansion
+    }
+
+    cube.clearAll();
+    float center = 1.5;
+
+    for (uint8_t x = 0; x < CUBE_X; x++) {
+        for (uint8_t y = 0; y < CUBE_Y; y++) {
+            for (uint8_t z = 0; z < CUBE_Z; z++) {
+                float dist = fabs(x - center) + fabs(y - center) + fabs(z - center);
+                // Draw ring at current radius
+                if (fabs(dist - phase * 0.8) < 0.9) {
+                    cube.setVoxel(x, y, z);
+                }
+            }
+        }
+    }
+
+    phase++;
+    if (phase > 8) phase = 8;  // Hold until next beat
+    step++;
+}
+
+// --- SPIRAL BEAT: Beat triggers rotating spiral ---
+void AnimationEngine::animSpiralBeat() {
+    MusicData md = musicData ? *musicData : defaultMusic();
+    cube.clearAll();
+
+    float speed = md.active ? (md.tempo / 120.0) * 0.3 : 0.2;
+
+    for (uint8_t z = 0; z < CUBE_Z; z++) {
+        float a = angle + z * 1.5;
+        uint8_t x = constrain((int)(1.5 + 1.5 * cos(a)), 0, 3);
+        uint8_t y = constrain((int)(1.5 + 1.5 * sin(a)), 0, 3);
+        cube.setVoxel(x, y, z);
+
+        // Beat flash: light adjacent voxels
+        if (md.beat || (!md.active && step % 6 == 0)) {
+            if (x > 0) cube.setVoxel(x - 1, y, z);
+            if (x < 3) cube.setVoxel(x + 1, y, z);
+            if (y > 0) cube.setVoxel(x, y - 1, z);
+            if (y < 3) cube.setVoxel(x, y + 1, z);
+        }
+    }
+
+    angle += speed;
+    if (angle > 2 * PI) angle -= 2 * PI;
+    step++;
+}
+
+// --- PARTICLE RAIN: High frequencies create falling particles ---
+void AnimationEngine::animParticleRain() {
+    MusicData md = musicData ? *musicData : defaultMusic();
+
+    // Shift all layers down
+    for (uint8_t z = 0; z < CUBE_Z - 1; z++) {
+        cube.setLayer(z, cube.getLayer(z + 1));
+    }
+
+    // Generate particles based on high-freq energy
+    uint16_t topLayer = 0;
+    float highEnergy = md.active ? md.spectral[3] : (sin(angle) + 1.0) / 3.0;
+    uint8_t numParticles = (uint8_t)(highEnergy * 8);
+
+    for (uint8_t i = 0; i < numParticles; i++) {
+        topLayer |= (1 << random(16));
+    }
+    cube.setLayer(CUBE_Z - 1, topLayer);
+    angle += 0.2;
+}
+
+// --- MUSIC FIRE: Energy controls flame intensity ---
+void AnimationEngine::animMusicFire() {
+    MusicData md = musicData ? *musicData : defaultMusic();
+
+    // Shift up with decay
+    for (int8_t z = CUBE_Z - 1; z > 0; z--) {
+        uint16_t belowLayer = cube.getLayer(z - 1);
+        uint16_t decayed = 0;
+        uint8_t surviveChance = md.active ? (uint8_t)(30 + md.energy * 50) : 50;
+        for (uint8_t bit = 0; bit < 16; bit++) {
+            if ((belowLayer >> bit) & 1) {
+                if (random(100) < surviveChance) decayed |= (1 << bit);
+            }
+        }
+        cube.setLayer(z, decayed);
+    }
+
+    // Fire intensity based on energy
+    uint16_t base = 0;
+    uint8_t density = md.active ? (uint8_t)(md.energy * 16) : 8;
+    for (uint8_t i = 0; i < density; i++) {
+        base |= (1 << random(16));
+    }
+    cube.setLayer(0, base);
+}
+
+// --- ORBIT SYNC: Orbiting point synced to tempo ---
+void AnimationEngine::animOrbitSync() {
+    MusicData md = musicData ? *musicData : defaultMusic();
+    cube.clearAll();
+
+    float cx = 1.5, cy = 1.5, cz = 1.5;
+    float radius = 1.5;
+    float speed = md.active ? (md.tempo / 60.0) * 0.15 : 0.2;
+
+    // Main orbiting point
+    uint8_t x = constrain((int)(cx + radius * cos(angle)), 0, 3);
+    uint8_t y = constrain((int)(cy + radius * sin(angle)), 0, 3);
+    uint8_t z = constrain((int)(cz + radius * sin(angle * 0.7)), 0, 3);
+    cube.setVoxel(x, y, z);
+
+    // Trail (3 points behind)
+    for (uint8_t t = 1; t <= 3; t++) {
+        float ta = angle - t * 0.4;
+        uint8_t tx = constrain((int)(cx + radius * cos(ta)), 0, 3);
+        uint8_t ty = constrain((int)(cy + radius * sin(ta)), 0, 3);
+        uint8_t tz = constrain((int)(cz + radius * sin(ta * 0.7)), 0, 3);
+        cube.setVoxel(tx, ty, tz);
+    }
+
+    // Beat: light center cross
+    if (md.beat) {
+        cube.setVoxel(1, 1, 1); cube.setVoxel(2, 2, 2);
+        cube.setVoxel(1, 2, 1); cube.setVoxel(2, 1, 2);
+    }
+
+    angle += speed;
+    if (angle > 2 * PI) angle -= 2 * PI;
+}
+
+// --- BEAT EXPLOSION: Beat bursts from cube center outward ---
+void AnimationEngine::animBeatExplosion() {
+    MusicData md = musicData ? *musicData : defaultMusic();
+
+    // On beat, trigger explosion
+    if (md.beat || (!md.active && step % 10 == 0)) {
+        explosionFrame = 1;
+    }
+
+    cube.clearAll();
+
+    if (explosionFrame > 0 && explosionFrame <= 6) {
+        float t = explosionFrame / 3.0;
+
+        // 8 corner particles expanding from center
+        for (int i = 0; i < 8; i++) {
+            float ax = (i & 1) ? 1.0 : -1.0;
+            float ay = (i & 2) ? 1.0 : -1.0;
+            float az = (i & 4) ? 1.0 : -1.0;
+
+            int x = constrain((int)(1.5 + ax * t), 0, 3);
+            int y = constrain((int)(1.5 + ay * t), 0, 3);
+            int z = constrain((int)(1.5 + az * t), 0, 3);
+            cube.setVoxel(x, y, z);
+        }
+
+        // Extra fill on early frames for intensity
+        if (explosionFrame <= 2) {
+            cube.setVoxel(1, 1, 1); cube.setVoxel(2, 2, 2);
+            cube.setVoxel(1, 2, 2); cube.setVoxel(2, 1, 1);
+        }
+
+        explosionFrame++;
+        if (explosionFrame > 6) explosionFrame = 0;
+    }
+    step++;
+}
+

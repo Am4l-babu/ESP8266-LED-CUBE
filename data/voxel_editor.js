@@ -8,6 +8,11 @@ let editorBuffer = [0, 0, 0, 0];  // 4 layers, 16 bits each
 let currentEditorLayer = 3;        // Start at top layer
 let selectedSlot = 0;
 
+// Hardware color painting state
+let editorMode = 'pattern'; // 'pattern' or 'paint'
+let hardwareColorMap = new Array(64).fill('#00e5ff');
+let currentPaintColor = '#00e5ff';
+
 // Initialize the voxel editor grid
 function initVoxelEditor() {
     const grid = document.getElementById('voxelGrid');
@@ -28,7 +33,11 @@ function initVoxelEditor() {
             cell.appendChild(coord);
 
             cell.addEventListener('click', () => {
-                toggleEditorVoxel(x, y);
+                if (editorMode === 'pattern') {
+                    toggleEditorVoxel(x, y);
+                } else if (editorMode === 'paint') {
+                    paintEditorVoxel(x, y);
+                }
             });
 
             grid.appendChild(cell);
@@ -45,6 +54,12 @@ function toggleEditorVoxel(x, y) {
     updateEditorGrid();
 }
 
+function paintEditorVoxel(x, y) {
+    const idx = currentEditorLayer * 16 + y * 4 + x;
+    hardwareColorMap[idx] = currentPaintColor;
+    updateEditorGrid();
+}
+
 function updateEditorGrid() {
     const cells = document.querySelectorAll('.voxel-cell');
     const layerData = editorBuffer[currentEditorLayer] || 0;
@@ -53,8 +68,13 @@ function updateEditorGrid() {
         const x = parseInt(cell.dataset.x);
         const y = parseInt(cell.dataset.y);
         const bitPos = y * 4 + x;
+        const idx = currentEditorLayer * 16 + y * 4 + x;
+        
         const isOn = (layerData >> bitPos) & 1;
         cell.classList.toggle('on', !!isOn);
+        
+        // Update CSS variable for the cell's color
+        cell.style.setProperty('--led-color-cell', hardwareColorMap[idx]);
     });
 }
 
@@ -65,6 +85,82 @@ function updateEditorFromState(layers) {
 }
 
 function setupEditorControls() {
+    // --- Mode Toggle ---
+    const modePattern = document.getElementById('modePattern');
+    const modePaint = document.getElementById('modePaint');
+    const patternControls = document.getElementById('patternControls');
+    const paintControls = document.getElementById('paintControls');
+
+    if (modePattern && modePaint) {
+        modePattern.addEventListener('click', () => {
+            editorMode = 'pattern';
+            modePattern.classList.add('active');
+            modePaint.classList.remove('active');
+            patternControls.classList.remove('hidden');
+            paintControls.classList.add('hidden');
+        });
+        modePaint.addEventListener('click', () => {
+            editorMode = 'paint';
+            modePaint.classList.add('active');
+            modePattern.classList.remove('active');
+            paintControls.classList.remove('hidden');
+            patternControls.classList.add('hidden');
+        });
+    }
+
+    // --- Paint Controls ---
+    const paintColorPicker = document.getElementById('paintColorPicker');
+    if (paintColorPicker) {
+        paintColorPicker.addEventListener('input', (e) => {
+            currentPaintColor = e.target.value;
+            document.getElementById('paintHexValue').textContent = currentPaintColor.toUpperCase();
+        });
+    }
+
+    document.getElementById('paintFillLayer')?.addEventListener('click', () => {
+        const startIdx = currentEditorLayer * 16;
+        for (let i = 0; i < 16; i++) hardwareColorMap[startIdx + i] = currentPaintColor;
+        updateEditorGrid();
+    });
+
+    document.getElementById('paintFillAll')?.addEventListener('click', () => {
+        hardwareColorMap.fill(currentPaintColor);
+        updateEditorGrid();
+    });
+
+    document.getElementById('paintSave')?.addEventListener('click', () => {
+        fetch('/api/colors', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ colors: hardwareColorMap })
+        })
+        .then(response => response.json())
+        .then(data => {
+            console.log('Colors saved:', data);
+            // Alert user visually?
+            const btn = document.getElementById('paintSave');
+            const originalText = btn.textContent;
+            btn.textContent = 'Saved!';
+            setTimeout(() => btn.textContent = originalText, 2000);
+        })
+        .catch(err => console.error('Failed to save colors:', err));
+    });
+
+    // Fetch initial colors
+    fetch('/api/colors')
+        .then(res => res.json())
+        .then(data => {
+            if (data && data.colors && data.colors.length === 64) {
+                hardwareColorMap = data.colors;
+                if (typeof updateHardwareColors === 'function') {
+                    updateHardwareColors(hardwareColorMap);
+                }
+                updateEditorGrid();
+            }
+        })
+        .catch(err => console.error('Failed to load colors:', err));
+
+    // --- Original Pattern Controls (Clear/Fill/Send) ---
     // Layer tabs
     document.querySelectorAll('.layer-tab').forEach(tab => {
         tab.addEventListener('click', () => {
