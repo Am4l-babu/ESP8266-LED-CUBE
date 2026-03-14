@@ -188,10 +188,33 @@
                 <h2 class="card-title">Voxel Editor</h2>
                 <p class="card-subtitle">Click cells to toggle LEDs. Edit one layer at a time.</p>
                 
-                <div class="editor-controls">
+                <div class="editor-mode-toggle">
+                    <label class="toggle-btn active" id="modePattern">
+                        <input type="radio" name="editorMode" value="pattern" checked>
+                        <span>Draw Pattern</span>
+                    </label>
+                    <label class="toggle-btn" id="modePaint">
+                        <input type="radio" name="editorMode" value="paint">
+                        <span>Paint Hardware Colours</span>
+                    </label>
+                </div>
+
+                <div class="editor-controls" id="patternControls">
                     <button class="btn btn-outline" id="editorClear">Clear All</button>
                     <button class="btn btn-outline" id="editorFill">Fill All</button>
                     <button class="btn btn-primary" id="editorSend">Send to Cube</button>
+                </div>
+
+                <div class="editor-controls hidden" id="paintControls">
+                    <div class="color-picker-group">
+                        <div class="color-picker-wrapper">
+                            <input type="color" id="paintColorPicker" value="#00e5ff" title="Choose LED colour to paint">
+                        </div>
+                        <span class="color-hex-value" id="paintHexValue">#00E5FF</span>
+                    </div>
+                    <button class="btn btn-outline" id="paintFillLayer">Fill Layer</button>
+                    <button class="btn btn-outline" id="paintFillAll">Fill All</button>
+                    <button class="btn btn-primary" id="paintSave">Save Mapping</button>
                 </div>
                 
                 <div class="layer-tabs">

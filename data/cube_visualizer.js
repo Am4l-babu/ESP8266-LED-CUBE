@@ -25,7 +25,11 @@ let LED_OFF_COLOR = new THREE.Color(0x111122);
 let LED_ON_EMISSIVE = new THREE.Color(0x00aacc);
 let LED_OFF_EMISSIVE = new THREE.Color(0x000000);
 
-// Scene point lights (to recolor on LED color change)
+// Hardware color map (per-LED)
+let hwColors = new Array(64).fill(null).map(() => new THREE.Color(0x00e5ff));
+let hwEmissives = new Array(64).fill(null).map(() => new THREE.Color(0x00aacc));
+
+// Set the LED on-color from a hex string (e.g. "#ff00aa") - applies to ALL LEDs
 let fullPointLight1 = null;
 let dashPointLight1 = null;
 
@@ -41,18 +45,30 @@ function setLedColor(hex) {
     if (fullPointLight1) fullPointLight1.color.set(hex);
     if (dashPointLight1) dashPointLight1.color.set(hex);
 
-    // Update all ON LEDs in full view
-    ledSpheres.forEach(sphere => {
+    // Update the hardware map (fallback so the global picker sets everything)
+    updateHardwareColors(new Array(64).fill(hex));
+}
+
+// Update the 64-element color map (for per-LED colors)
+function updateHardwareColors(hexArray) {
+    if (!hexArray || hexArray.length !== 64) return;
+    for (let i = 0; i < 64; i++) {
+        hwColors[i].set(hexArray[i]);
+        hwEmissives[i].set(hexArray[i]);
+        hwEmissives[i].multiplyScalar(0.7);
+    }
+    
+    // Immediately apply to any LEDs currently ON
+    ledSpheres.forEach((sphere, idx) => {
         if (sphere.userData.on) {
-            sphere.material.color.copy(LED_ON_COLOR);
-            sphere.material.emissive.copy(LED_ON_EMISSIVE);
+            sphere.material.color.copy(hwColors[idx]);
+            sphere.material.emissive.copy(hwEmissives[idx]);
         }
     });
-    // Update all ON LEDs in dashboard view
-    dashLedSpheres.forEach(sphere => {
+    dashLedSpheres.forEach((sphere, idx) => {
         if (sphere.userData.on) {
-            sphere.material.color.copy(LED_ON_COLOR);
-            sphere.material.emissive.copy(LED_ON_EMISSIVE);
+            sphere.material.color.copy(hwColors[idx]);
+            sphere.material.emissive.copy(hwEmissives[idx]);
         }
     });
 }
@@ -427,8 +443,8 @@ function updateSphereStates(sphereArray, layers) {
                 if (sphere && sphere.userData.on !== !!isOn) {
                     sphere.userData.on = !!isOn;
                     if (isOn) {
-                        sphere.material.color.copy(LED_ON_COLOR);
-                        sphere.material.emissive.copy(LED_ON_EMISSIVE);
+                        sphere.material.color.copy(hwColors[idx]);
+                        sphere.material.emissive.copy(hwEmissives[idx]);
                         sphere.material.emissiveIntensity = 1;
                         sphere.material.opacity = 1;
                     } else {

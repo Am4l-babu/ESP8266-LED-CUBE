@@ -705,6 +705,36 @@ body::before {
 }
 
 /* --- Voxel Editor --- */
+.editor-mode-toggle {
+    display: flex;
+    background: #1a1a3a;
+    border-radius: var(--radius-sm);
+    padding: 4px;
+    margin-bottom: 16px;
+    width: fit-content;
+}
+
+.toggle-btn {
+    padding: 8px 16px;
+    border-radius: 6px;
+    font-size: 0.85rem;
+    font-weight: 500;
+    color: var(--text-secondary);
+    cursor: pointer;
+    transition: var(--transition);
+    user-select: none;
+}
+
+.toggle-btn input[type="radio"] {
+    display: none;
+}
+
+.toggle-btn.active {
+    background: linear-gradient(135deg, var(--accent-cyan), var(--accent-purple));
+    color: #fff;
+    box-shadow: 0 2px 8px rgba(0, 0, 0, 0.2);
+}
+
 .editor-controls {
     display: flex;
     gap: 8px;
@@ -798,9 +828,10 @@ body::before {
 }
 
 .voxel-cell.on {
-    background: var(--led-color);
-    border-color: var(--led-color);
-    box-shadow: 0 0 15px color-mix(in srgb, var(--led-color) 50%, transparent), inset 0 0 10px rgba(255, 255, 255, 0.2);
+    /* If a cell has a specific hardware color painted, use it; otherwise use the global LED color */
+    background: var(--led-color-cell, var(--led-color));
+    border-color: var(--led-color-cell, var(--led-color));
+    box-shadow: 0 0 15px color-mix(in srgb, var(--led-color-cell, var(--led-color)) 50%, transparent), inset 0 0 10px rgba(255, 255, 255, 0.2);
 }
 
 .voxel-cell .coord {

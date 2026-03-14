@@ -125,6 +125,52 @@ void WebServerManager::setupRoutes() {
         this->server.send(200, "application/json", response);
     });
     
+    // API: Per-LED hardware color mapping
+    server.on("/api/colors", HTTP_GET, [this]() {
+        if (!LittleFS.exists("/colors.json")) {
+            // Return default 64 cyan colors
+            String defaultColors = "{\"colors\":[";
+            for(int i=0; i<64; i++) {
+                defaultColors += "\"#00e5ff\"";
+                if(i < 63) defaultColors += ",";
+            }
+            defaultColors += "]}";
+            this->server.send(200, "application/json", defaultColors);
+            return;
+        }
+        
+        File file = LittleFS.open("/colors.json", "r");
+        if (file) {
+            this->server.streamFile(file, "application/json");
+            file.close();
+        } else {
+            this->server.send(500, "application/json", "{\"error\":\"read failed\"}");
+        }
+    });
+    
+    server.on("/api/colors", HTTP_POST, [this]() {
+        if (this->server.hasArg("plain")) {
+            String body = this->server.arg("plain");
+            File file = LittleFS.open("/colors.json", "w");
+            if (file) {
+                file.print(body);
+                file.close();
+                this->server.send(200, "application/json", "{\"status\":\"success\"}");
+                
+                // Tell clients to reload the color map
+                StaticJsonDocument<64> doc;
+                doc["type"] = "colorMapUpdate";
+                String msg;
+                serializeJson(doc, msg);
+                this->webSocket.broadcastTXT(msg);
+            } else {
+                this->server.send(500, "application/json", "{\"error\":\"write failed\"}");
+            }
+        } else {
+            this->server.send(400, "application/json", "{\"error\":\"bad request\"}");
+        }
+    });
+    
     // Serve all other static files from LittleFS
     server.onNotFound([this]() {
         if (!serveFile(this->server, this->server.uri())) {
