@@ -101,6 +101,23 @@ header.top {
 #canvasHolder:active { cursor: grabbing; }
 .hint { font-size:.75rem; color: var(--text-dim); text-align:center; margin-top:10px; }
 
+.canvas-fallback {
+    position: absolute; inset: 0; display:flex; flex-direction:column;
+    align-items:center; justify-content:center; text-align:center;
+    padding: 24px; gap: 10px;
+}
+.canvas-fallback.hidden { display:none; }
+.canvas-fallback .warn-icon { font-size: 1.8rem; }
+.canvas-fallback p { color: var(--text-secondary); font-size:.85rem; max-width: 380px; }
+.canvas-fallback .hint { margin-top: 0; }
+.btn-retry {
+    margin-top: 6px; padding: 8px 18px; border-radius: 999px;
+    border: 1px solid var(--accent-cyan); background: rgba(0,229,255,0.08);
+    color: var(--accent-cyan); cursor:pointer; font-size:.8rem; font-weight:600;
+    transition: all .2s ease;
+}
+.btn-retry:hover { background: rgba(0,229,255,0.18); box-shadow: var(--glow-cyan); }
+
 .now-playing {
     display:flex; align-items:center; justify-content:space-between;
     margin-bottom: 14px; flex-wrap: wrap; gap:10px;
@@ -211,7 +228,14 @@ footer.foot a:hover { text-decoration:underline; }
         <div>
             <div class="card">
                 <div class="card-title">3D Preview</div>
-                <div id="canvasHolder"></div>
+                <div id="canvasHolder">
+                    <div id="canvasFallback" class="canvas-fallback hidden">
+                        <span class="warn-icon">⚠️</span>
+                        <p>3D preview couldn't load (Three.js was blocked or failed to load in this browser).</p>
+                        <p>The animation engine and every control still work &mdash; watch the <strong>LEDs lit</strong> counter in Simulated Stats below.</p>
+                        <button class="btn-retry" id="retryThreeBtn">Retry 3D View</button>
+                    </div>
+                </div>
                 <p class="hint">Drag / touch to orbit &bull; Scroll or pinch to zoom &bull; <span class="kbd">Space</span> play/pause &bull; <span class="kbd">&larr;</span>/<span class="kbd">&rarr;</span> switch animation</p>
             </div>
 
@@ -603,22 +627,27 @@ function tickAnimation() {
 let scene, camera, renderer;
 let ledSpheres = [];
 let pointLight1 = null;
-let LED_ON_COLOR = new THREE.Color(0x00e5ff);
-let LED_ON_EMISSIVE = new THREE.Color(0x00aacc);
-const LED_OFF_COLOR = new THREE.Color(0x111122);
-const LED_OFF_EMISSIVE = new THREE.Color(0x000000);
+let LED_ON_COLOR = null, LED_ON_EMISSIVE = null, LED_OFF_COLOR = null, LED_OFF_EMISSIVE = null;
+let threeReady = false;
 let autoRotate = true;
 let theta = 0.8, phi = 0.6, radius = 10;
 let frameCount = 0;
 
 function setLedColorJS(hex) {
+    if (!threeReady) return;
     LED_ON_COLOR.set(hex);
     LED_ON_EMISSIVE.set(hex);
     LED_ON_EMISSIVE.multiplyScalar(0.7);
     if (pointLight1) pointLight1.color.set(hex);
 }
 
+// Throws if THREE is undefined or WebGL is unavailable - callers must catch.
 function initScene() {
+    LED_ON_COLOR = new THREE.Color(0x00e5ff);
+    LED_ON_EMISSIVE = new THREE.Color(0x00aacc);
+    LED_OFF_COLOR = new THREE.Color(0x111122);
+    LED_OFF_EMISSIVE = new THREE.Color(0x000000);
+
     const container = document.getElementById("canvasHolder");
     const w = container.clientWidth, h = container.clientHeight;
 
@@ -650,6 +679,7 @@ function initScene() {
     setupOrbitControls(container);
     window.addEventListener("resize", handleResize);
     updateCamera();
+    threeReady = true;
     animateLoop();
 }
 
@@ -723,6 +753,7 @@ function setupOrbitControls(container) {
 }
 
 function handleResize() {
+    if (!threeReady || !camera || !renderer) return;
     const container = document.getElementById("canvasHolder");
     const w = container.clientWidth, h = container.clientHeight;
     camera.aspect = w / h;
@@ -736,10 +767,11 @@ function renderVoxels() {
         const layerData = layers[z] || 0;
         for (let y = 0; y < 4; y++) for (let x = 0; x < 4; x++) {
             const bit = (layerData >> (y * 4 + x)) & 1;
+            if (bit) lit++;
+            if (!threeReady) continue;
             const idx = z * 16 + y * 4 + x;
             const sphere = ledSpheres[idx];
             if (!sphere) continue;
-            if (bit) lit++;
             if (sphere.userData.on !== !!bit) {
                 sphere.userData.on = !!bit;
                 if (bit) {
@@ -825,7 +857,7 @@ function initUI() {
     brightSlider.addEventListener("input", e => {
         params.brightness = parseInt(e.target.value, 10);
         document.getElementById("brightVal").textContent = params.brightness;
-        renderer.toneMappingExposure = 0.5 + (params.brightness / 255) * 1.2;
+        if (threeReady && renderer) renderer.toneMappingExposure = 0.5 + (params.brightness / 255) * 1.2;
     });
 
     const densitySlider = document.getElementById("densitySlider");
@@ -842,6 +874,9 @@ function initUI() {
             document.getElementById("dirVal").textContent = ["Z", "X", "Y"][params.direction];
         });
     });
+
+    const retryBtn = document.getElementById("retryThreeBtn");
+    if (retryBtn) retryBtn.addEventListener("click", () => attemptThreeInit(true));
 
     const colorPicker = document.getElementById("colorPicker");
     colorPicker.addEventListener("input", e => {
@@ -868,8 +903,59 @@ function initUI() {
     }, 500);
 }
 
-initScene();
-initUI();
+/* ============================================================
+   RESILIENT BOOT - the page must stay usable even if the
+   Three.js CDN is blocked or fails to load in this browser
+   ============================================================ */
+const THREE_FALLBACK_CDN = "https://cdn.jsdelivr.net/npm/three@0.128.0/build/three.min.js";
+
+function showCanvasFallback() {
+    const fb = document.getElementById("canvasFallback");
+    if (fb) fb.classList.remove("hidden");
+}
+function hideCanvasFallback() {
+    const fb = document.getElementById("canvasFallback");
+    if (fb) fb.classList.add("hidden");
+}
+
+function loadScriptOnce(src) {
+    return new Promise((resolve, reject) => {
+        const s = document.createElement("script");
+        s.src = src;
+        s.onload = resolve;
+        s.onerror = reject;
+        document.head.appendChild(s);
+    });
+}
+
+async function attemptThreeInit(isRetry) {
+    if (typeof THREE === "undefined") {
+        try {
+            await loadScriptOnce(THREE_FALLBACK_CDN);
+        } catch (e) {
+            console.warn("[simulator] Three.js fallback CDN also failed to load:", e);
+        }
+    }
+    if (typeof THREE === "undefined") {
+        showCanvasFallback();
+        return;
+    }
+    try {
+        initScene();
+        hideCanvasFallback();
+    } catch (err) {
+        console.warn("[simulator] 3D preview failed to initialize (WebGL unavailable?):", err);
+        showCanvasFallback();
+    }
+    if (isRetry) return; // initUI() already ran on first boot
+}
+
+async function boot() {
+    await attemptThreeInit(false);
+    initUI(); // must always run: controls, sliders, anim grid, keyboard shortcuts
+}
+
+boot();
 </script>
 </body>
 </html>
