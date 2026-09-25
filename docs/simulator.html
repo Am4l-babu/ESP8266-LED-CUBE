@@ -1,0 +1,875 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>LED Cube Simulator</title>
+<meta name="description" content="Interactive browser simulator for the ESP8266 4x4x4 LED Cube - no hardware required">
+<script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+<style>
+:root {
+    --bg-primary: #0a0a1a;
+    --bg-card: rgba(20, 20, 50, 0.7);
+    --bg-card-hover: rgba(30, 30, 70, 0.85);
+    --border-color: rgba(100, 100, 255, 0.18);
+    --text-primary: #e8e8f0;
+    --text-secondary: #8888aa;
+    --text-dim: #55557a;
+    --accent-cyan: #00e5ff;
+    --accent-magenta: #ff00e5;
+    --accent-purple: #a855f7;
+    --accent-green: #00ff88;
+    --led-color: #00e5ff;
+    --glow-cyan: 0 0 20px rgba(0, 229, 255, 0.35);
+    --radius: 12px;
+    --radius-sm: 8px;
+    --font-main: 'Segoe UI', system-ui, -apple-system, sans-serif;
+    --font-mono: 'Cascadia Code', 'Fira Code', Consolas, monospace;
+}
+* { margin:0; padding:0; box-sizing:border-box; }
+html { font-size:16px; -webkit-text-size-adjust:100%; }
+body {
+    font-family: var(--font-main);
+    background: var(--bg-primary);
+    color: var(--text-primary);
+    min-height: 100vh;
+    line-height: 1.5;
+    overflow-x: hidden;
+}
+body::before {
+    content: '';
+    position: fixed; inset: 0;
+    background:
+        radial-gradient(ellipse at 20% 50%, rgba(0,229,255,0.08) 0%, transparent 50%),
+        radial-gradient(ellipse at 80% 20%, rgba(255,0,229,0.06) 0%, transparent 50%),
+        radial-gradient(ellipse at 50% 80%, rgba(168,85,247,0.05) 0%, transparent 50%);
+    z-index: -1;
+    animation: bgPulse 8s ease-in-out infinite alternate;
+}
+@keyframes bgPulse { 0%{opacity:.6} 100%{opacity:1} }
+
+.wrap { max-width: 1200px; margin: 0 auto; padding: 20px 20px 60px; }
+
+header.top {
+    display:flex; align-items:center; justify-content:space-between;
+    flex-wrap:wrap; gap:12px;
+    padding: 14px 0 22px;
+    border-bottom: 1px solid var(--border-color);
+    margin-bottom: 22px;
+}
+.brand { display:flex; align-items:center; gap:10px; }
+.brand svg { color: var(--accent-cyan); filter: drop-shadow(0 0 6px rgba(0,229,255,.6)); }
+.brand h1 { font-size: 1.35rem; font-weight:700; letter-spacing:.5px; }
+.brand .accent { color: var(--accent-cyan); text-shadow: 0 0 12px rgba(0,229,255,.5); }
+.badge-row { display:flex; gap:8px; flex-wrap:wrap; }
+.badge {
+    font-size:.72rem; font-family: var(--font-mono); padding: 4px 10px;
+    border-radius: 999px; border: 1px solid var(--border-color);
+    color: var(--text-secondary); background: var(--bg-card);
+}
+.badge.live { color:#0a0a1a; background: var(--accent-green); border-color: var(--accent-green); font-weight:700; }
+.badge.live::before { content:'● '; }
+
+.layout {
+    display: grid;
+    grid-template-columns: 1.35fr 1fr;
+    gap: 20px;
+    align-items: start;
+}
+@media (max-width: 900px) { .layout { grid-template-columns: 1fr; } }
+
+.card {
+    background: var(--bg-card);
+    border: 1px solid var(--border-color);
+    border-radius: var(--radius);
+    padding: 18px;
+    backdrop-filter: blur(10px);
+}
+.card + .card { margin-top: 18px; }
+.card-title {
+    font-size: .8rem; text-transform: uppercase; letter-spacing: 1.2px;
+    color: var(--text-secondary); margin-bottom: 14px; font-weight: 600;
+}
+
+#canvasHolder {
+    width: 100%; height: 420px; border-radius: var(--radius-sm);
+    overflow: hidden; position: relative;
+    background: radial-gradient(ellipse at 50% 30%, rgba(0,229,255,0.05), transparent 70%);
+    touch-action: none;
+    cursor: grab;
+}
+#canvasHolder:active { cursor: grabbing; }
+.hint { font-size:.75rem; color: var(--text-dim); text-align:center; margin-top:10px; }
+
+.now-playing {
+    display:flex; align-items:center; justify-content:space-between;
+    margin-bottom: 14px; flex-wrap: wrap; gap:10px;
+}
+.now-playing .label { font-size:.68rem; letter-spacing:1px; color:var(--text-dim); text-transform:uppercase; display:block; }
+.now-playing .name { font-size:1.15rem; font-weight:700; color: var(--accent-cyan); text-shadow: 0 0 12px rgba(0,229,255,.4); }
+.dot { width:9px; height:9px; border-radius:50%; background: var(--accent-green); box-shadow: 0 0 8px var(--accent-green); display:inline-block; margin-right:6px; }
+.dot.paused { background: var(--text-dim); box-shadow:none; animation:none !important; }
+.dot { animation: blink 1.4s ease-in-out infinite; }
+@keyframes blink { 0%,100%{opacity:1} 50%{opacity:.35} }
+
+.transport { display:flex; gap:8px; justify-content:center; margin: 6px 0 16px; }
+.ctrl-btn {
+    width:44px; height:44px; border-radius:50%;
+    border:1px solid var(--border-color); background: rgba(255,255,255,0.03);
+    color: var(--text-primary); display:flex; align-items:center; justify-content:center;
+    cursor:pointer; transition: all .2s ease;
+}
+.ctrl-btn:hover { background: var(--bg-card-hover); border-color: var(--accent-cyan); box-shadow: var(--glow-cyan); }
+.ctrl-btn.play { width:54px; height:54px; background: linear-gradient(135deg, var(--accent-cyan), var(--accent-purple)); color:#04050f; border:none; }
+.ctrl-btn.play:hover { transform: scale(1.05); }
+
+.toggles { display:flex; gap:18px; justify-content:center; flex-wrap:wrap; }
+.toggle { display:flex; align-items:center; gap:8px; font-size:.85rem; color: var(--text-secondary); cursor:pointer; user-select:none; }
+.toggle input { accent-color: var(--accent-cyan); width:16px; height:16px; cursor:pointer; }
+
+.slider-group { margin-bottom: 16px; }
+.slider-group:last-child { margin-bottom:0; }
+.slider-label { display:flex; justify-content:space-between; font-size:.82rem; color: var(--text-secondary); margin-bottom:6px; }
+.slider-label .val { color: var(--text-primary); font-family: var(--font-mono); font-weight:600; }
+input[type=range] {
+    -webkit-appearance:none; width:100%; height:6px; border-radius:3px;
+    background: rgba(255,255,255,0.08); outline:none;
+}
+input[type=range]::-webkit-slider-thumb {
+    -webkit-appearance:none; width:18px; height:18px; border-radius:50%;
+    background: var(--accent-cyan); cursor:pointer; box-shadow: 0 0 10px rgba(0,229,255,.6);
+    border: 2px solid #04050f;
+}
+input[type=range].magenta::-webkit-slider-thumb { background: var(--accent-magenta); box-shadow: 0 0 10px rgba(255,0,229,.6); }
+input[type=range]::-moz-range-thumb {
+    width:16px; height:16px; border-radius:50%; background: var(--accent-cyan); cursor:pointer; border:2px solid #04050f;
+}
+
+.dir-row { display:flex; gap:6px; flex-wrap:wrap; margin-top:4px; }
+.dir-btn {
+    flex:1; min-width:40px; padding:8px 0; border-radius:8px; text-align:center;
+    border:1px solid var(--border-color); background: rgba(255,255,255,0.03);
+    color: var(--text-secondary); cursor:pointer; font-size:1rem; transition: all .2s ease;
+}
+.dir-btn.active, .dir-btn:hover { border-color: var(--accent-magenta); color:#fff; box-shadow: 0 0 12px rgba(255,0,229,.3); }
+
+.color-row { display:flex; align-items:center; gap:12px; }
+input[type=color] {
+    width:42px; height:42px; border-radius:10px; border:2px solid var(--border-color);
+    background:transparent; cursor:pointer; padding:0;
+}
+.hex { font-family: var(--font-mono); font-size:.85rem; color: var(--text-secondary); }
+
+.anim-grid {
+    display:grid; grid-template-columns: repeat(auto-fill, minmax(110px,1fr)); gap:8px;
+}
+.anim-tile {
+    display:flex; flex-direction:column; align-items:center; gap:6px;
+    padding: 12px 6px; border-radius: var(--radius-sm);
+    border:1px solid var(--border-color); background: rgba(255,255,255,0.02);
+    color: var(--text-secondary); cursor:pointer; transition: all .2s ease; font-size:.72rem; text-align:center;
+}
+.anim-tile .icon { font-size:1.3rem; }
+.anim-tile:hover { border-color: var(--accent-cyan); color: var(--text-primary); background: var(--bg-card-hover); }
+.anim-tile.active {
+    border-color: var(--accent-cyan); color: var(--accent-cyan);
+    background: rgba(0,229,255,0.08); box-shadow: var(--glow-cyan);
+}
+
+.stat-row { display:flex; justify-content:space-between; font-size:.78rem; color:var(--text-secondary); padding:6px 0; border-bottom: 1px dashed var(--border-color); }
+.stat-row:last-child { border-bottom:none; }
+.stat-row span:last-child { color: var(--text-primary); font-family: var(--font-mono); }
+
+footer.foot {
+    text-align:center; margin-top: 28px; color: var(--text-dim); font-size:.78rem;
+}
+footer.foot a { color: var(--accent-cyan); text-decoration:none; }
+footer.foot a:hover { text-decoration:underline; }
+
+.kbd { font-family: var(--font-mono); background: rgba(255,255,255,0.06); border:1px solid var(--border-color); border-radius:4px; padding:1px 6px; font-size:.72rem; }
+</style>
+</head>
+<body>
+<div class="wrap">
+
+    <header class="top">
+        <div class="brand">
+            <svg viewBox="0 0 24 24" width="30" height="30" fill="none" stroke="currentColor" stroke-width="2">
+                <path d="M12 2L2 7l10 5 10-5-10-5z"/><path d="M2 17l10 5 10-5"/><path d="M2 12l10 5 10-5"/>
+            </svg>
+            <h1>LED <span class="accent">CUBE</span> Simulator</h1>
+        </div>
+        <div class="badge-row">
+            <span class="badge live">Running in your browser</span>
+            <span class="badge">No hardware needed</span>
+            <span class="badge">20 animations</span>
+        </div>
+    </header>
+
+    <div class="layout">
+        <!-- LEFT: 3D view -->
+        <div>
+            <div class="card">
+                <div class="card-title">3D Preview</div>
+                <div id="canvasHolder"></div>
+                <p class="hint">Drag / touch to orbit &bull; Scroll or pinch to zoom &bull; <span class="kbd">Space</span> play/pause &bull; <span class="kbd">&larr;</span>/<span class="kbd">&rarr;</span> switch animation</p>
+            </div>
+
+            <div class="card">
+                <div class="card-title">Animation Library</div>
+                <div class="anim-grid" id="animGrid"></div>
+            </div>
+        </div>
+
+        <!-- RIGHT: controls -->
+        <div>
+            <div class="card">
+                <div class="now-playing">
+                    <div>
+                        <span class="label">Now Playing</span>
+                        <span class="name"><span class="dot" id="playDot"></span><span id="animName">Rain</span></span>
+                    </div>
+                </div>
+
+                <div class="transport">
+                    <button class="ctrl-btn" id="prevBtn" title="Previous">&#9664;&#9664;</button>
+                    <button class="ctrl-btn play" id="playBtn" title="Play / Pause">&#9208;</button>
+                    <button class="ctrl-btn" id="nextBtn" title="Next">&#9654;&#9654;</button>
+                </div>
+
+                <div class="toggles">
+                    <label class="toggle"><input type="checkbox" id="autoplayToggle"> Autoplay</label>
+                    <label class="toggle"><input type="checkbox" id="rotateToggle" checked> Auto-rotate camera</label>
+                </div>
+            </div>
+
+            <div class="card">
+                <div class="card-title">Parameters</div>
+                <div class="slider-group">
+                    <div class="slider-label"><span>Speed</span><span class="val" id="speedVal">100ms</span></div>
+                    <input type="range" id="speedSlider" min="20" max="500" value="100">
+                </div>
+                <div class="slider-group">
+                    <div class="slider-label"><span>Brightness</span><span class="val" id="brightVal">200</span></div>
+                    <input type="range" id="brightSlider" min="10" max="255" value="200">
+                </div>
+                <div class="slider-group">
+                    <div class="slider-label"><span>Density</span><span class="val" id="densityVal">4</span></div>
+                    <input type="range" class="magenta" id="densitySlider" min="1" max="16" value="4">
+                </div>
+                <div class="slider-group">
+                    <div class="slider-label"><span>Sweep Axis</span><span class="val" id="dirVal">Z</span></div>
+                    <div class="dir-row">
+                        <button class="dir-btn active" data-dir="0">Z</button>
+                        <button class="dir-btn" data-dir="1">X</button>
+                        <button class="dir-btn" data-dir="2">Y</button>
+                    </div>
+                </div>
+                <div class="slider-group" style="margin-bottom:0">
+                    <div class="slider-label"><span>LED Colour</span></div>
+                    <div class="color-row">
+                        <input type="color" id="colorPicker" value="#00e5ff">
+                        <span class="hex" id="hexVal">#00E5FF</span>
+                    </div>
+                </div>
+            </div>
+
+            <div class="card">
+                <div class="card-title">Simulated Stats</div>
+                <div class="stat-row"><span>Refresh rate</span><span id="statFps">100.0 Hz</span></div>
+                <div class="stat-row"><span>LEDs lit</span><span id="statLit">0 / 64</span></div>
+                <div class="stat-row"><span>Frame</span><span id="statFrame">0</span></div>
+            </div>
+        </div>
+    </div>
+
+    <footer class="foot">
+        Pure client-side JS &amp; Three.js &mdash; this page talks to no server and needs no cube to run.<br>
+        Flash the real firmware and open the <a href="../data/index.html">live dashboard</a> to control actual hardware.
+    </footer>
+</div>
+
+<script>
+"use strict";
+
+/* ============================================================
+   CUBE STATE  (4x4x4 = 64 voxels, 4 layers of 16-bit masks)
+   Mirrors CubeEngine's setVoxel/setLayer/fillAll API in C++
+   ============================================================ */
+const CUBE_X = 4, CUBE_Y = 4, CUBE_Z = 4;
+let layers = [0, 0, 0, 0]; // one 16-bit mask per Z layer, bit = y*4+x
+
+const CubeAPI = {
+    clearAll() { layers = [0, 0, 0, 0]; },
+    fillAll() { layers = [0xFFFF, 0xFFFF, 0xFFFF, 0xFFFF]; },
+    fillLayer(z) { layers[z] = 0xFFFF; },
+    setVoxel(x, y, z) {
+        if (x < 0 || x > 3 || y < 0 || y > 3 || z < 0 || z > 3) return;
+        layers[z] |= (1 << (y * 4 + x));
+    },
+    setLayer(z, val) { layers[z] = val & 0xFFFF; },
+    getLayer(z) { return layers[z]; },
+};
+
+/* ============================================================
+   ANIMATION ENGINE - JS port of src/animations.cpp
+   ============================================================ */
+const ANIM_NAMES = [
+    "Rain", "Wave", "Spiral", "Sparkle",
+    "Expand Cube", "Shrink Cube", "Snake", "Fire",
+    "Ripple", "Plane Sweep", "Voxel Bounce", "Random Voxel",
+    "Rotating Planes", "Knight Rider", "Orbiting Point", "Cube Explosion",
+    "Heartbeat", "Breathing", "Falling Sand", "Lightning"
+];
+const ANIM_ICONS = ["🌧️","🌊","🌀","✨","📦","🔲","🐍","🔥","💧","📐","⚡","🎲","🔄","🚗","🪐","💥","💓","😮‍💨","⏳","⚡"];
+
+const params = { speed: 100, brightness: 200, direction: 0, density: 4, ledColor: "#00e5ff" };
+let currentAnim = 0;
+let playing = true;
+let autoplay = false;
+let lastAutoplaySwitch = 0;
+const AUTOPLAY_INTERVAL = 6000; // faster than firmware default (30s) - nicer for a demo page
+
+// per-animation transient state (reset on switch, mirrors resetState())
+let step = 0, phase = 0, angle = 0;
+let dirX = 1, dirY = 0, dirZ = 0;
+let snake = [{ x: 0, y: 0, z: 0 }];
+let snakeLen = 1;
+let bounce = { x: 0, y: 0, z: 0 };
+let sandGrid = [];
+let explosionFrame = 0;
+
+function resetState() {
+    step = 0; phase = 0; angle = 0;
+    dirX = 1; dirY = 0; dirZ = 0;
+    snake = [{ x: 0, y: 0, z: 0 }];
+    snakeLen = 1;
+    bounce = { x: 0, y: 0, z: 0 };
+    sandGrid = Array.from({ length: 4 }, () => Array.from({ length: 4 }, () => Array(4).fill(0)));
+    explosionFrame = 0;
+}
+resetState();
+
+function rnd(n) { return Math.floor(Math.random() * n); }
+function clamp(v, lo, hi) { return Math.max(lo, Math.min(hi, v)); }
+
+function setAnimation(i) {
+    currentAnim = ((i % ANIM_NAMES.length) + ANIM_NAMES.length) % ANIM_NAMES.length;
+    resetState();
+    CubeAPI.clearAll();
+    document.getElementById("animName").textContent = ANIM_NAMES[currentAnim];
+    document.querySelectorAll(".anim-tile").forEach((t, idx) => t.classList.toggle("active", idx === currentAnim));
+    renderVoxels();
+}
+function nextAnimation() { setAnimation(currentAnim + 1); }
+function prevAnimation() { setAnimation(currentAnim - 1); }
+
+// ---- Animation implementations (faithful port of animations.cpp) ----
+function animRain() {
+    for (let z = 0; z < CUBE_Z - 1; z++) CubeAPI.setLayer(z, CubeAPI.getLayer(z + 1));
+    let top = 0;
+    for (let i = 0; i < params.density; i++) if (rnd(100) < 30) top |= (1 << rnd(16));
+    CubeAPI.setLayer(CUBE_Z - 1, top);
+}
+function animWave() {
+    CubeAPI.clearAll();
+    for (let x = 0; x < CUBE_X; x++) for (let y = 0; y < CUBE_Y; y++) {
+        const dist = Math.sqrt(x * x + y * y);
+        let z = Math.round(1.5 + 1.5 * Math.sin(angle + dist * 0.8));
+        z = clamp(z, 0, CUBE_Z - 1);
+        CubeAPI.setVoxel(x, y, z);
+    }
+    angle += 0.3; if (angle > 2 * Math.PI) angle -= 2 * Math.PI;
+}
+const spiralX = [0,1,2,3, 3,3,3, 2,1,0, 0,0, 1,2, 2, 1];
+const spiralY = [0,0,0,0, 1,2,3, 3,3,3, 2,1, 1,1, 2, 2];
+function animSpiral() {
+    CubeAPI.clearAll();
+    const spiralLen = 16;
+    for (let i = 0; i < 4; i++) {
+        const idx = (step + i) % spiralLen;
+        const z = Math.floor((step + i) / spiralLen) % CUBE_Z;
+        CubeAPI.setVoxel(spiralX[idx], spiralY[idx], z);
+    }
+    step++; if (step >= spiralLen * CUBE_Z) step = 0;
+}
+function animSparkle() {
+    CubeAPI.clearAll();
+    for (let i = 0; i < params.density; i++) CubeAPI.setVoxel(rnd(CUBE_X), rnd(CUBE_Y), rnd(CUBE_Z));
+}
+function drawHollowCube(size) {
+    const start = Math.floor((3 - size) / 2), end = start + size;
+    for (let x = start; x <= end; x++) for (let y = start; y <= end; y++) for (let z = start; z <= end; z++) {
+        const isEdge = (x === start || x === end || y === start || y === end || z === start || z === end);
+        if (isEdge) CubeAPI.setVoxel(x, y, z);
+    }
+}
+function animExpandCube() {
+    CubeAPI.clearAll();
+    drawHollowCube(step % 4);
+    step++; if (step >= 8) step = 0;
+}
+function animShrinkCube() {
+    CubeAPI.clearAll();
+    drawHollowCube(3 - (step % 4));
+    step++; if (step >= 8) step = 0;
+}
+function animSnake() {
+    let { x: nx, y: ny, z: nz } = snake[0];
+    switch (rnd(6)) {
+        case 0: nx++; break; case 1: nx--; break;
+        case 2: ny++; break; case 3: ny--; break;
+        case 4: nz++; break; case 5: nz--; break;
+    }
+    nx = (nx + CUBE_X) % CUBE_X; ny = (ny + CUBE_Y) % CUBE_Y; nz = (nz + CUBE_Z) % CUBE_Z;
+    const maxLen = clamp(params.density, 2, 16);
+    if (snakeLen < maxLen) snakeLen++;
+    snake.unshift({ x: nx, y: ny, z: nz });
+    snake = snake.slice(0, snakeLen);
+    CubeAPI.clearAll();
+    snake.forEach(v => CubeAPI.setVoxel(v.x, v.y, v.z));
+}
+function animFire() {
+    for (let z = CUBE_Z - 1; z > 0; z--) {
+        const below = CubeAPI.getLayer(z - 1);
+        let decayed = 0;
+        for (let bit = 0; bit < 16; bit++) if ((below >> bit) & 1 && rnd(100) < 60) decayed |= (1 << bit);
+        CubeAPI.setLayer(z, decayed);
+    }
+    let base = 0;
+    for (let i = 0; i < 16; i++) if (rnd(100) < params.density * 6) base |= (1 << i);
+    CubeAPI.setLayer(0, base);
+}
+function animRipple() {
+    CubeAPI.clearAll();
+    const center = 1.5;
+    for (let x = 0; x < CUBE_X; x++) for (let y = 0; y < CUBE_Y; y++) {
+        const dist = Math.sqrt((x - center) ** 2 + (y - center) ** 2);
+        const wave = Math.sin(dist * 2.0 - angle);
+        if (wave > 0.3) {
+            let z = Math.round(center + center * wave * 0.5);
+            z = clamp(z, 0, CUBE_Z - 1);
+            CubeAPI.setVoxel(x, y, z);
+        }
+    }
+    angle += 0.4; if (angle > 2 * Math.PI) angle -= 2 * Math.PI;
+}
+function animPlaneSweep() {
+    CubeAPI.clearAll();
+    const p = step % (CUBE_Z * 2);
+    const layer = p < CUBE_Z ? p : (CUBE_Z * 2 - 1 - p);
+    switch (params.direction % 3) {
+        case 0: CubeAPI.fillLayer(layer); break;
+        case 1: for (let y = 0; y < CUBE_Y; y++) for (let z = 0; z < CUBE_Z; z++) CubeAPI.setVoxel(layer, y, z); break;
+        case 2: for (let x = 0; x < CUBE_X; x++) for (let z = 0; z < CUBE_Z; z++) CubeAPI.setVoxel(x, layer, z); break;
+    }
+    step++;
+}
+function animVoxelBounce() {
+    CubeAPI.clearAll();
+    CubeAPI.setVoxel(bounce.x, bounce.y, bounce.z);
+    bounce.x += dirX; bounce.y += dirY; bounce.z += dirZ;
+    if (bounce.x >= CUBE_X || bounce.x < 0) { bounce.x = dirX > 0 ? CUBE_X - 1 : 0; dirX = -dirX; }
+    if (bounce.y >= CUBE_Y || bounce.y < 0) { bounce.y = dirY > 0 ? CUBE_Y - 1 : 0; dirY = -dirY; }
+    if (bounce.z >= CUBE_Z || bounce.z < 0) { bounce.z = dirZ > 0 ? CUBE_Z - 1 : 0; dirZ = -dirZ; }
+    if (rnd(100) < 20) {
+        const axis = rnd(3);
+        if (axis === 0) dirX = dirX === 0 ? (rnd(2) ? 1 : -1) : 0;
+        if (axis === 1) dirY = dirY === 0 ? (rnd(2) ? 1 : -1) : 0;
+        if (axis === 2) dirZ = dirZ === 0 ? (rnd(2) ? 1 : -1) : 0;
+    }
+    if (dirX === 0 && dirY === 0 && dirZ === 0) dirX = 1;
+}
+function animRandomVoxel() {
+    if (step < 64) { CubeAPI.setVoxel(rnd(CUBE_X), rnd(CUBE_Y), rnd(CUBE_Z)); step++; }
+    else { CubeAPI.clearAll(); step = 0; }
+}
+function animRotatingPlanes() {
+    CubeAPI.clearAll();
+    const cx = 1.5, cy = 1.5;
+    for (let x = 0; x < CUBE_X; x++) for (let y = 0; y < CUBE_Y; y++) {
+        const dx = x - cx, dy = y - cy;
+        const rotated = dx * Math.cos(angle) + dy * Math.sin(angle);
+        if (Math.abs(rotated) < 0.8) for (let z = 0; z < CUBE_Z; z++) CubeAPI.setVoxel(x, y, z);
+    }
+    angle += 0.15; if (angle > 2 * Math.PI) angle -= 2 * Math.PI;
+}
+function animKnightRider() {
+    CubeAPI.clearAll();
+    const p = step % (CUBE_X * 2 - 2);
+    const col = p < CUBE_X ? p : (CUBE_X * 2 - 2 - p);
+    for (let y = 0; y < CUBE_Y; y++) for (let z = 0; z < CUBE_Z; z++) {
+        CubeAPI.setVoxel(col, y, z);
+        if (col > 0) CubeAPI.setVoxel(col - 1, y, z);
+    }
+    step++;
+}
+function animOrbitingPoint() {
+    CubeAPI.clearAll();
+    const cx = 1.5, cy = 1.5, cz = 1.5, radius = 1.5;
+    const x = clamp(Math.round(cx + radius * Math.cos(angle)), 0, 3);
+    const y = clamp(Math.round(cy + radius * Math.sin(angle)), 0, 3);
+    const z = clamp(Math.round(cz + radius * Math.sin(angle * 0.7)), 0, 3);
+    CubeAPI.setVoxel(x, y, z);
+    const a2 = angle - 0.5;
+    const x2 = clamp(Math.round(cx + radius * Math.cos(a2)), 0, 3);
+    const y2 = clamp(Math.round(cy + radius * Math.sin(a2)), 0, 3);
+    const z2 = clamp(Math.round(cz + radius * Math.sin(a2 * 0.7)), 0, 3);
+    CubeAPI.setVoxel(x2, y2, z2);
+    angle += 0.2; if (angle > 2 * Math.PI) angle -= 2 * Math.PI;
+}
+function animCubeExplosion() {
+    CubeAPI.clearAll();
+    if (phase === 0) {
+        const t = step / 8.0;
+        for (let i = 0; i < 8; i++) {
+            const ax = (i & 1) ? 1 : -1, ay = (i & 2) ? 1 : -1, az = (i & 4) ? 1 : -1;
+            const x = clamp(Math.round(1.5 + ax * t), 0, 3);
+            const y = clamp(Math.round(1.5 + ay * t), 0, 3);
+            const z = clamp(Math.round(1.5 + az * t), 0, 3);
+            CubeAPI.setVoxel(x, y, z);
+        }
+        step++; if (step >= 12) { step = 0; phase = 1; }
+    } else {
+        step++; if (step >= 4) { step = 0; phase = 0; }
+    }
+}
+const heartbeatPattern = [0, 2, 3, 2, 0, 0, 1, 2, 1, 0, 0, 0];
+function animHeartbeat() {
+    CubeAPI.clearAll();
+    const intensity = heartbeatPattern[step % 12];
+    for (let x = 0; x < CUBE_X; x++) for (let y = 0; y < CUBE_Y; y++) for (let z = 0; z < CUBE_Z; z++) {
+        const dist = Math.sqrt((x - 1.5) ** 2 + (y - 1.5) ** 2 + (z - 1.5) ** 2);
+        if (dist <= intensity) CubeAPI.setVoxel(x, y, z);
+    }
+    step++;
+}
+function animBreathing() {
+    CubeAPI.fillAll();
+    angle += 0.05; if (angle > 2 * Math.PI) angle -= 2 * Math.PI;
+}
+function animFallingSand() {
+    if (rnd(100) < params.density * 8) {
+        const x = rnd(CUBE_X), y = rnd(CUBE_Y);
+        if (!sandGrid[x][y][CUBE_Z - 1]) sandGrid[x][y][CUBE_Z - 1] = 1;
+    }
+    for (let x = 0; x < CUBE_X; x++) for (let y = 0; y < CUBE_Y; y++) for (let z = 0; z < CUBE_Z - 1; z++) {
+        if (!sandGrid[x][y][z] && sandGrid[x][y][z + 1]) { sandGrid[x][y][z] = 1; sandGrid[x][y][z + 1] = 0; }
+    }
+    CubeAPI.clearAll();
+    for (let x = 0; x < CUBE_X; x++) for (let y = 0; y < CUBE_Y; y++) for (let z = 0; z < CUBE_Z; z++) {
+        if (sandGrid[x][y][z]) CubeAPI.setVoxel(x, y, z);
+    }
+    step++; if (step > 60) { sandGrid = Array.from({ length: 4 }, () => Array.from({ length: 4 }, () => Array(4).fill(0))); step = 0; }
+}
+function animLightning() {
+    if (phase === 0) {
+        CubeAPI.clearAll();
+        let x = rnd(CUBE_X), y = rnd(CUBE_Y);
+        for (let z = CUBE_Z - 1; z >= 0; z--) {
+            CubeAPI.setVoxel(x, y, z);
+            if (rnd(100) < 40) {
+                const bx = clamp(x + rnd(3) - 1, 0, 3), by = clamp(y + rnd(3) - 1, 0, 3);
+                CubeAPI.setVoxel(bx, by, z);
+            }
+            x = clamp(x + rnd(3) - 1, 0, 3); y = clamp(y + rnd(3) - 1, 0, 3);
+        }
+        phase = 1; step = 0;
+    } else {
+        step++;
+        if (step > 2) CubeAPI.clearAll();
+        if (step > (8 - Math.floor(params.density / 2))) phase = 0;
+    }
+}
+
+const ANIM_FUNCS = [
+    animRain, animWave, animSpiral, animSparkle,
+    animExpandCube, animShrinkCube, animSnake, animFire,
+    animRipple, animPlaneSweep, animVoxelBounce, animRandomVoxel,
+    animRotatingPlanes, animKnightRider, animOrbitingPoint, animCubeExplosion,
+    animHeartbeat, animBreathing, animFallingSand, animLightning
+];
+
+function tickAnimation() {
+    if (!playing) return;
+    ANIM_FUNCS[currentAnim]();
+    renderVoxels();
+    frameCount++;
+}
+
+/* ============================================================
+   THREE.JS 3D VISUALIZER  (adapted from data/cube_visualizer.js)
+   ============================================================ */
+let scene, camera, renderer;
+let ledSpheres = [];
+let pointLight1 = null;
+let LED_ON_COLOR = new THREE.Color(0x00e5ff);
+let LED_ON_EMISSIVE = new THREE.Color(0x00aacc);
+const LED_OFF_COLOR = new THREE.Color(0x111122);
+const LED_OFF_EMISSIVE = new THREE.Color(0x000000);
+let autoRotate = true;
+let theta = 0.8, phi = 0.6, radius = 10;
+let frameCount = 0;
+
+function setLedColorJS(hex) {
+    LED_ON_COLOR.set(hex);
+    LED_ON_EMISSIVE.set(hex);
+    LED_ON_EMISSIVE.multiplyScalar(0.7);
+    if (pointLight1) pointLight1.color.set(hex);
+}
+
+function initScene() {
+    const container = document.getElementById("canvasHolder");
+    const w = container.clientWidth, h = container.clientHeight;
+
+    scene = new THREE.Scene();
+    scene.fog = new THREE.Fog(0x050510, 15, 30);
+
+    camera = new THREE.PerspectiveCamera(45, w / h, 0.1, 100);
+
+    renderer = new THREE.WebGLRenderer({ antialias: true, alpha: true });
+    renderer.setSize(w, h);
+    renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
+    renderer.setClearColor(0x050510, 0);
+    container.appendChild(renderer.domElement);
+
+    scene.add(new THREE.AmbientLight(0x222244, 0.6));
+    pointLight1 = new THREE.PointLight(LED_ON_COLOR.getHex(), 0.6, 20);
+    pointLight1.position.set(5, 5, 5);
+    scene.add(pointLight1);
+    const point2 = new THREE.PointLight(0xff00e5, 0.3, 20);
+    point2.position.set(-5, 3, -5);
+    scene.add(point2);
+
+    const grid = new THREE.GridHelper(6, 8, 0x1a1a3a, 0x0d0d2b);
+    grid.position.y = -2;
+    scene.add(grid);
+
+    createLedSpheres();
+    drawWires();
+    setupOrbitControls(container);
+    window.addEventListener("resize", handleResize);
+    updateCamera();
+    animateLoop();
+}
+
+function createLedSpheres() {
+    const spacing = 1.5, offset = (3 * spacing) / 2;
+    const geo = new THREE.SphereGeometry(0.2, 16, 16);
+    for (let z = 0; z < 4; z++) for (let y = 0; y < 4; y++) for (let x = 0; x < 4; x++) {
+        const mat = new THREE.MeshStandardMaterial({
+            color: LED_OFF_COLOR.clone(), emissive: LED_OFF_EMISSIVE.clone(),
+            emissiveIntensity: 0, metalness: 0.3, roughness: 0.4, transparent: true, opacity: 0.55
+        });
+        const sphere = new THREE.Mesh(geo, mat);
+        sphere.position.set(x * spacing - offset, z * spacing - offset, y * spacing - offset);
+        sphere.userData = { x, y, z, on: false };
+        scene.add(sphere);
+        ledSpheres.push(sphere);
+    }
+}
+
+function drawWires() {
+    const spacing = 1.5, offset = (3 * spacing) / 2;
+    const wireMat = new THREE.LineBasicMaterial({ color: 0x1a1a3a, transparent: true, opacity: 0.3 });
+    for (let x = 0; x < 4; x++) for (let y = 0; y < 4; y++) {
+        const pts = [];
+        for (let z = 0; z < 4; z++) pts.push(new THREE.Vector3(x * spacing - offset, z * spacing - offset, y * spacing - offset));
+        scene.add(new THREE.Line(new THREE.BufferGeometry().setFromPoints(pts), wireMat));
+    }
+    for (let z = 0; z < 4; z++) {
+        for (let x = 0; x < 4; x++) {
+            const pts = [];
+            for (let y = 0; y < 4; y++) pts.push(new THREE.Vector3(x * spacing - offset, z * spacing - offset, y * spacing - offset));
+            scene.add(new THREE.Line(new THREE.BufferGeometry().setFromPoints(pts), wireMat));
+        }
+        for (let y = 0; y < 4; y++) {
+            const pts = [];
+            for (let x = 0; x < 4; x++) pts.push(new THREE.Vector3(x * spacing - offset, z * spacing - offset, y * spacing - offset));
+            scene.add(new THREE.Line(new THREE.BufferGeometry().setFromPoints(pts), wireMat));
+        }
+    }
+}
+
+function updateCamera() {
+    camera.position.x = radius * Math.sin(phi) * Math.cos(theta);
+    camera.position.y = radius * Math.cos(phi);
+    camera.position.z = radius * Math.sin(phi) * Math.sin(theta);
+    camera.lookAt(0, 0, 0);
+}
+
+function setupOrbitControls(container) {
+    let dragging = false, prevX = 0, prevY = 0, userInteracted = false;
+    function down(e) { dragging = true; prevX = e.clientX ?? e.touches[0].clientX; prevY = e.clientY ?? e.touches[0].clientY; }
+    function move(e) {
+        if (!dragging) return;
+        const x = e.clientX ?? e.touches[0].clientX, y = e.clientY ?? e.touches[0].clientY;
+        theta += (x - prevX) * 0.01;
+        phi = clamp(phi - (y - prevY) * 0.01, 0.1, Math.PI - 0.1);
+        prevX = x; prevY = y;
+        userInteracted = true;
+        updateCamera();
+    }
+    function up() { dragging = false; }
+    function wheel(e) { e.preventDefault(); radius = clamp(radius + e.deltaY * 0.01, 4, 20); updateCamera(); }
+    container.addEventListener("mousedown", down);
+    container.addEventListener("mousemove", move);
+    container.addEventListener("mouseup", up);
+    container.addEventListener("mouseleave", up);
+    container.addEventListener("wheel", wheel, { passive: false });
+    container.addEventListener("touchstart", down, { passive: true });
+    container.addEventListener("touchmove", move, { passive: true });
+    container.addEventListener("touchend", up);
+}
+
+function handleResize() {
+    const container = document.getElementById("canvasHolder");
+    const w = container.clientWidth, h = container.clientHeight;
+    camera.aspect = w / h;
+    camera.updateProjectionMatrix();
+    renderer.setSize(w, h);
+}
+
+function renderVoxels() {
+    let lit = 0;
+    for (let z = 0; z < 4; z++) {
+        const layerData = layers[z] || 0;
+        for (let y = 0; y < 4; y++) for (let x = 0; x < 4; x++) {
+            const bit = (layerData >> (y * 4 + x)) & 1;
+            const idx = z * 16 + y * 4 + x;
+            const sphere = ledSpheres[idx];
+            if (!sphere) continue;
+            if (bit) lit++;
+            if (sphere.userData.on !== !!bit) {
+                sphere.userData.on = !!bit;
+                if (bit) {
+                    sphere.material.color.copy(LED_ON_COLOR);
+                    sphere.material.emissive.copy(LED_ON_EMISSIVE);
+                    sphere.material.emissiveIntensity = 1;
+                    sphere.material.opacity = 1;
+                } else {
+                    sphere.material.color.copy(LED_OFF_COLOR);
+                    sphere.material.emissive.copy(LED_OFF_EMISSIVE);
+                    sphere.material.emissiveIntensity = 0;
+                    sphere.material.opacity = 0.55;
+                }
+            }
+        }
+    }
+    document.getElementById("statLit").textContent = lit + " / 64";
+    document.getElementById("statFrame").textContent = frameCount;
+}
+
+function animateLoop() {
+    requestAnimationFrame(animateLoop);
+    if (autoRotate) { theta += 0.0025; updateCamera(); }
+    ledSpheres.forEach(sphere => {
+        if (sphere.userData.on) {
+            const pulse = 0.8 + 0.2 * Math.sin(Date.now() * 0.003 + sphere.userData.x + sphere.userData.z);
+            sphere.material.emissiveIntensity = pulse;
+        }
+    });
+    if (renderer && scene && camera) renderer.render(scene, camera);
+}
+
+/* ============================================================
+   UI WIRING
+   ============================================================ */
+function buildAnimGrid() {
+    const grid = document.getElementById("animGrid");
+    ANIM_NAMES.forEach((name, i) => {
+        const tile = document.createElement("button");
+        tile.className = "anim-tile" + (i === currentAnim ? " active" : "");
+        tile.innerHTML = `<span class="icon">${ANIM_ICONS[i]}</span><span>${name}</span>`;
+        tile.addEventListener("click", () => setAnimation(i));
+        grid.appendChild(tile);
+    });
+}
+
+function setPlaying(p) {
+    playing = p;
+    document.getElementById("playBtn").innerHTML = playing ? "&#10074;&#10074;" : "&#9654;";
+    document.getElementById("playDot").classList.toggle("paused", !playing);
+}
+
+let animTimer = null;
+function restartTimer() {
+    if (animTimer) clearInterval(animTimer);
+    animTimer = setInterval(tickAnimation, params.speed);
+}
+
+function initUI() {
+    buildAnimGrid();
+    setAnimation(0);
+    setPlaying(true);
+
+    document.getElementById("playBtn").addEventListener("click", () => setPlaying(!playing));
+    document.getElementById("prevBtn").addEventListener("click", prevAnimation);
+    document.getElementById("nextBtn").addEventListener("click", nextAnimation);
+
+    document.getElementById("autoplayToggle").addEventListener("change", e => {
+        autoplay = e.target.checked;
+        lastAutoplaySwitch = Date.now();
+    });
+    document.getElementById("rotateToggle").addEventListener("change", e => { autoRotate = e.target.checked; });
+
+    const speedSlider = document.getElementById("speedSlider");
+    speedSlider.addEventListener("input", e => {
+        params.speed = parseInt(e.target.value, 10);
+        document.getElementById("speedVal").textContent = params.speed + "ms";
+        document.getElementById("statFps").textContent = (1000 / params.speed).toFixed(1) + " Hz";
+        restartTimer();
+    });
+
+    const brightSlider = document.getElementById("brightSlider");
+    brightSlider.addEventListener("input", e => {
+        params.brightness = parseInt(e.target.value, 10);
+        document.getElementById("brightVal").textContent = params.brightness;
+        renderer.toneMappingExposure = 0.5 + (params.brightness / 255) * 1.2;
+    });
+
+    const densitySlider = document.getElementById("densitySlider");
+    densitySlider.addEventListener("input", e => {
+        params.density = parseInt(e.target.value, 10);
+        document.getElementById("densityVal").textContent = params.density;
+    });
+
+    document.querySelectorAll(".dir-btn").forEach(btn => {
+        btn.addEventListener("click", () => {
+            params.direction = parseInt(btn.dataset.dir, 10);
+            document.querySelectorAll(".dir-btn").forEach(b => b.classList.remove("active"));
+            btn.classList.add("active");
+            document.getElementById("dirVal").textContent = ["Z", "X", "Y"][params.direction];
+        });
+    });
+
+    const colorPicker = document.getElementById("colorPicker");
+    colorPicker.addEventListener("input", e => {
+        params.ledColor = e.target.value;
+        document.getElementById("hexVal").textContent = e.target.value.toUpperCase();
+        setLedColorJS(e.target.value);
+    });
+
+    document.addEventListener("keydown", e => {
+        if (e.code === "Space") { e.preventDefault(); setPlaying(!playing); }
+        if (e.code === "ArrowRight") nextAnimation();
+        if (e.code === "ArrowLeft") prevAnimation();
+    });
+
+    restartTimer();
+    document.getElementById("statFps").textContent = (1000 / params.speed).toFixed(1) + " Hz";
+
+    // Gentle autoplay cycling loop (independent of the fixed-rate anim timer)
+    setInterval(() => {
+        if (autoplay && Date.now() - lastAutoplaySwitch >= AUTOPLAY_INTERVAL) {
+            lastAutoplaySwitch = Date.now();
+            nextAnimation();
+        }
+    }, 500);
+}
+
+initScene();
+initUI();
+</script>
+</body>
+</html>

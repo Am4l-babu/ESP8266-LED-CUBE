@@ -26,10 +26,40 @@
 [🏗️ Hardware](#%EF%B8%8F-hardware-architecture) •
 [🎨 Animations](#-animation-library) •
 [🌐 Web Interface](#-web-interface) •
+[🎮 Live Simulator](#-live-simulator) •
 [📡 API Reference](#-websocket-api) •
 [🛠️ Build Guide](#%EF%B8%8F-build--flash)
 
 </div>
+
+---
+
+## 🎮 Live Simulator
+
+<div align="center">
+
+### *No cube on your desk? Fly one in your browser — right now, zero setup.*
+
+[![Launch Simulator](https://img.shields.io/badge/▶_LAUNCH-LIVE_SIMULATOR-00e5ff?style=for-the-badge&logoColor=white)](https://htmlpreview.github.io/?https://github.com/Am4l-babu/ESP8266-LED-CUBE/blob/main/docs/simulator.html)
+[![No Hardware](https://img.shields.io/badge/Hardware-Not_Required-a855f7?style=for-the-badge)](#-live-simulator)
+[![Runs In Browser](https://img.shields.io/badge/Runs-100%25_in_Browser-ff00e5?style=for-the-badge)](#-live-simulator)
+
+**👉 [htmlpreview.github.io/?…/docs/simulator.html](https://htmlpreview.github.io/?https://github.com/Am4l-babu/ESP8266-LED-CUBE/blob/main/docs/simulator.html) 👈**
+
+</div>
+
+A pure client-side, pixel-faithful port of all **20 animations** from [`animations.cpp`](src/animations.cpp) — Rain, Fire, Snake, Lightning, Cube Explosion and more — rendered as a real-time, orbit-able Three.js 3D cube. It talks to no server and needs no soldering iron, so anyone can preview the light show before ever picking up a wire.
+
+| Feature | Description |
+|---|---|
+| 🧊 **Drag-to-orbit 3D cube** | 64 glowing LEDs rendered exactly like the real 4×4×4 matrix, drag/pinch to spin |
+| ▶️ **Full transport controls** | Play, pause, next/prev, autoplay-cycle through the whole library |
+| 🎚️ **Live parameter tuning** | Speed, brightness, density and sweep-axis sliders — matches the real dashboard |
+| 🎨 **Colour picker** | Recolour every LED on the fly |
+| ⌨️ **Keyboard shortcuts** | `Space` to play/pause, `←`/`→` to switch animations |
+| 📱 **Responsive** | Works on phone, tablet, or desktop — same page, same source (`docs/simulator.html`) |
+
+> Once you've flashed the real firmware, open the [live dashboard](data/index.html) on your ESP8266's IP — the same futuristic UI then drives actual hardware over WebSocket instead of simulating it.
 
 ---
 
